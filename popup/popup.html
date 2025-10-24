@@ -190,6 +190,44 @@
         <button id="clearData" class="btn btn-secondary">전체 삭제</button>
         <span id="dataCount" class="data-count">0개 항목</span>
       </div>
+      <button id="captureDom" class="btn btn-secondary" style="margin-top: 8px; width: 100%;">
+        📥 현재 페이지 DOM 구조 캡처
+      </button>
+      <details style="margin-top: 8px;">
+        <summary>⚙️ 캡처 고급 옵션</summary>
+        <div class="capture-options">
+          <div class="form-group">
+            <label for="captureRoot">루트 선택자 (선택)</label>
+            <input type="text" id="captureRoot" placeholder="#uuid-cd">
+          </div>
+          <div class="form-group">
+            <label for="captureMaxDepth">최대 깊이</label>
+            <input type="number" id="captureMaxDepth" min="1" max="20" value="8">
+          </div>
+          <div class="form-group">
+            <label for="captureMaxNodes">최대 노드 수</label>
+            <input type="number" id="captureMaxNodes" min="100" max="20000" step="100" value="4000">
+          </div>
+          <div class="form-group">
+            <label for="captureTextLength">텍스트 최대 길이</label>
+            <input type="number" id="captureTextLength" min="20" max="2000" step="20" value="400">
+          </div>
+          <div class="form-group inline-group" style="gap: 12px;">
+            <label class="checkbox-label">
+              <input type="checkbox" id="captureIncludeHidden" checked>
+              <span>숨김 요소 포함</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="captureIncludeAttributes" checked>
+              <span>속성 포함</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="captureIncludeLabel" checked>
+              <span>라벨 추출</span>
+            </label>
+          </div>
+        </div>
+      </details>
     </section>
 
     <!-- 실행 버튼 -->

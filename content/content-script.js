@@ -6,6 +6,205 @@
 const BRIDGE_REQUEST = 'NICE_BRIDGE_REQUEST';
 const BRIDGE_RESPONSE = 'NICE_BRIDGE_RESPONSE';
 
+const DEFAULT_SNAPSHOT_OPTIONS = {
+  maxDepth: 8,
+  includeText: true,
+  includeAttributes: true,
+  includeLabel: true,
+  includeFrames: true,
+  maxNodes: 4000,
+  textMaxLength: 400,
+  includeHidden: true,
+  rootSelector: null
+};
+
+function resolveLabel(element, doc) {
+  if (!element) return null;
+
+  const ariaLabel = element.getAttribute?.('aria-label');
+  if (ariaLabel) return ariaLabel.trim() || null;
+
+  const ariaLabelledBy = element.getAttribute?.('aria-labelledby');
+  if (ariaLabelledBy && doc) {
+    const ids = ariaLabelledBy.split(/\s+/).filter(Boolean);
+    for (const id of ids) {
+      const labelEl = doc.getElementById?.(id);
+      if (labelEl) {
+        const text = labelEl.textContent?.trim();
+        if (text) return text;
+      }
+    }
+  }
+
+  if (element.id && doc?.querySelector) {
+    const labelByFor = doc.querySelector(`label[for="${CSS.escape(element.id)}"]`);
+    if (labelByFor) {
+      const text = labelByFor.textContent?.trim();
+      if (text) return text;
+    }
+  }
+
+  let parent = element.parentElement;
+  let depth = 0;
+  while (parent && depth < 3) {
+    if (parent.tagName === 'LABEL') {
+      const text = parent.textContent?.trim();
+      if (text) return text;
+      break;
+    }
+    parent = parent.parentElement;
+    depth += 1;
+  }
+
+  return null;
+}
+
+function snapshotDom(options = {}) {
+  const opts = { ...DEFAULT_SNAPSHOT_OPTIONS, ...options };
+  const state = { count: 0, exceededLimit: false };
+  const tree = snapshotDocument(document, opts, state, { applyRootSelector: true, baseDepth: 0 });
+
+  return {
+    url: window.location.href,
+    capturedAt: new Date().toISOString(),
+    totalNodes: state.count,
+    exceededLimit: state.exceededLimit,
+    options: opts,
+    rootTag: tree?.tag ?? null,
+    tree
+  };
+}
+
+function snapshotDocument(doc, opts, state, config = {}) {
+  const { applyRootSelector = false, baseDepth = 0 } = config;
+  const rootElement = applyRootSelector && opts.rootSelector
+    ? doc.querySelector(opts.rootSelector)
+    : doc.body;
+
+  if (!rootElement) {
+    if (applyRootSelector && opts.rootSelector) {
+      throw new Error(`선택자(${opts.rootSelector})에 해당하는 요소를 찾을 수 없습니다`);
+    }
+    return null;
+  }
+
+  const view = doc.defaultView || window;
+  return collectNode(rootElement, baseDepth, { doc, view }, opts, state);
+}
+
+function collectNode(element, depth, context, opts, state) {
+  if (!element) return null;
+  if (depth > opts.maxDepth) {
+    return null;
+  }
+  if (state.count >= opts.maxNodes) {
+    state.exceededLimit = true;
+    return null;
+  }
+
+  const { doc, view } = context;
+
+  if (!opts.includeHidden && view?.getComputedStyle) {
+    const style = view.getComputedStyle(element);
+    if (style && (style.display === 'none' || style.visibility === 'hidden')) {
+      return null;
+    }
+  }
+
+  state.count += 1;
+
+  const node = {
+    tag: element.tagName.toLowerCase()
+  };
+
+  if (element.id) node.id = element.id;
+  if (element.classList && element.classList.length) node.classes = Array.from(element.classList);
+
+  if (opts.includeAttributes && element.attributes) {
+    const interestingAttributes = ['role', 'type', 'name', 'title', 'placeholder', 'aria-label', 'aria-describedby'];
+    const attrs = {};
+    for (const attr of element.attributes) {
+      const name = attr.name;
+      if (interestingAttributes.includes(name) || name.startsWith('data-') || name.startsWith('aria-')) {
+        attrs[name] = attr.value;
+      }
+    }
+    if (Object.keys(attrs).length) {
+      node.attributes = attrs;
+    }
+  }
+
+  if (opts.includeText) {
+    const textContent = element.childElementCount === 0 ? element.textContent.trim() : '';
+    if (textContent) {
+      node.text = textContent.length > opts.textMaxLength
+        ? `${textContent.slice(0, opts.textMaxLength)}…`
+        : textContent;
+    }
+  }
+
+  if (opts.includeLabel) {
+    const label = resolveLabel(element, doc);
+    if (label) {
+      node.label = label.length > opts.textMaxLength
+        ? `${label.slice(0, opts.textMaxLength)}…`
+        : label;
+    }
+  }
+
+  if (opts.includeFrames && element.tagName === 'IFRAME') {
+    const frameInfo = { url: null };
+    try {
+      const childWindow = element.contentWindow;
+      const childDocument = element.contentDocument;
+      if (childDocument && childWindow) {
+        try {
+          frameInfo.url = childWindow.location?.href || null;
+        } catch (locationError) {
+          frameInfo.url = null;
+        }
+
+        const frameTree = snapshotDocument(childDocument, opts, state, {
+          applyRootSelector: false,
+          baseDepth: depth + 1
+        });
+        if (frameTree) {
+          frameInfo.tree = frameTree;
+        }
+      } else {
+        frameInfo.error = '프레임 문서에 접근할 수 없습니다';
+      }
+    } catch (error) {
+      frameInfo.error = error.message;
+    }
+
+    if (frameInfo.url || frameInfo.error || frameInfo.tree) {
+      node.frame = frameInfo;
+    }
+  }
+
+  if (element.children && element.children.length > 0 && state.count < opts.maxNodes) {
+    const children = [];
+    for (const child of element.children) {
+      const childNode = collectNode(child, depth + 1, context, opts, state);
+      if (childNode) {
+        children.push(childNode);
+      }
+
+      if (state.count >= opts.maxNodes) {
+        state.exceededLimit = true;
+        break;
+      }
+    }
+
+    if (children.length) {
+      node.children = children;
+    }
+  }
+
+  return node;
+}
+
 class BridgeClient {
   constructor() {
     this.requestCounter = 0;
@@ -364,6 +563,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const plans = autoFiller ? autoFiller.getCurrentPlans() : [];
     sendResponse({ success: true, data: plans });
     return true;
+  }
+
+  if (message.action === 'captureDomStructure') {
+    try {
+      const snapshot = snapshotDom(message.options || {});
+      sendResponse({ success: true, data: snapshot });
+    } catch (error) {
+      sendResponse({ success: false, error: error.message });
+    }
   }
 });
 

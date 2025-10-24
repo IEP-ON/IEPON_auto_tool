@@ -49,8 +49,41 @@ const elements = {
   logContainer: document.getElementById('logContainer'),
   statusIndicator: document.getElementById('statusIndicator'),
   statusText: document.getElementById('statusText'),
-  connectionStatus: document.getElementById('connectionStatus')
+  connectionStatus: document.getElementById('connectionStatus'),
+  captureDom: document.getElementById('captureDom'),
+  captureRoot: document.getElementById('captureRoot'),
+  captureMaxDepth: document.getElementById('captureMaxDepth'),
+  captureMaxNodes: document.getElementById('captureMaxNodes'),
+  captureTextLength: document.getElementById('captureTextLength'),
+  captureIncludeHidden: document.getElementById('captureIncludeHidden'),
+  captureIncludeAttributes: document.getElementById('captureIncludeAttributes'),
+  captureIncludeLabel: document.getElementById('captureIncludeLabel')
 };
+
+const DEFAULT_CAPTURE = {
+  maxDepth: 8,
+  maxNodes: 4000,
+  textMaxLength: 400
+};
+
+function collectCaptureOptions() {
+  const numberOrDefault = (input, fallback) => {
+    if (!input) return fallback;
+    const value = parseInt(input.value, 10);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+
+  return {
+    rootSelector: elements.captureRoot ? elements.captureRoot.value.trim() || null : null,
+    maxDepth: numberOrDefault(elements.captureMaxDepth, DEFAULT_CAPTURE.maxDepth),
+    maxNodes: numberOrDefault(elements.captureMaxNodes, DEFAULT_CAPTURE.maxNodes),
+    textMaxLength: numberOrDefault(elements.captureTextLength, DEFAULT_CAPTURE.textMaxLength),
+    includeHidden: elements.captureIncludeHidden ? elements.captureIncludeHidden.checked : true,
+    includeAttributes: elements.captureIncludeAttributes ? elements.captureIncludeAttributes.checked : true,
+    includeLabel: elements.captureIncludeLabel ? elements.captureIncludeLabel.checked : true,
+    includeText: true
+  };
+}
 
 // 초기화
 async function init() {
@@ -68,7 +101,6 @@ async function init() {
     elements.apiKey.value = settings.apiKey;
     state.apiKey = settings.apiKey;
   }
-
   // 현재 학년도 설정
   const currentYear = new Date().getFullYear();
   elements.year.value = currentYear;
@@ -109,6 +141,10 @@ function registerEventListeners() {
 
   // 자동 입력 시작
   elements.startAutoFill.addEventListener('click', startAutoFill);
+
+  if (elements.captureDom) {
+    elements.captureDom.addEventListener('click', captureDomStructure);
+  }
 }
 
 // 설정 저장
@@ -515,6 +551,80 @@ async function startAutoFill() {
   } finally {
     state.isProcessing = false;
     elements.startAutoFill.disabled = false;
+  }
+}
+
+async function captureDomStructure() {
+  try {
+    if (elements.captureDom) {
+      elements.captureDom.disabled = true;
+      elements.captureDom.textContent = '캡처 중...';
+    }
+
+    addLog('DOM 구조 캡처 요청 중...', 'info');
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      throw new Error('활성 탭을 찾을 수 없습니다');
+    }
+
+    let response;
+    const captureOptions = collectCaptureOptions();
+    addLog(
+      `옵션: 루트=${captureOptions.rootSelector || '(전체)'} | 깊이=${captureOptions.maxDepth} | 노드=${captureOptions.maxNodes} | 프레임=${captureOptions.includeFrames ? '포함' : '미포함'}`,
+      'info'
+    );
+
+    try {
+      response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'captureDomStructure',
+        options: captureOptions
+      });
+    } catch (error) {
+      const message = error?.message || '';
+      if (message.includes('Could not establish connection') || message.includes('Receiving end does not exist')) {
+        addLog('Content Script가 없어 재주입 후 재시도합니다', 'info');
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content/content-script.js']
+        });
+
+        response = await chrome.tabs.sendMessage(tab.id, {
+          action: 'captureDomStructure',
+          options: captureOptions
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    if (!response?.success) {
+      throw new Error(response?.error || 'DOM 캡처 실패');
+    }
+
+    const snapshot = response.data;
+    const fileName = `nice-dom-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    addLog(`DOM 구조 캡처 완료: ${snapshot.totalNodes}개 노드`, 'success');
+    showNotification('DOM 구조 캡처 파일을 다운로드했습니다', 'success');
+  } catch (error) {
+    console.error('[나이스 자동입력] DOM 캡처 오류:', error);
+    showNotification(`DOM 캡처 실패: ${error.message}`, 'error');
+    addLog(`DOM 캡처 실패: ${error.message}`, 'error');
+  } finally {
+    if (elements.captureDom) {
+      elements.captureDom.disabled = false;
+      elements.captureDom.textContent = '📥 현재 페이지 DOM 구조 캡처';
+    }
   }
 }
 
