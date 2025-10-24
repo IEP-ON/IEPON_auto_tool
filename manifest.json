@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "나이스 월별계획 자동입력",
+  "version": "1.0.0",
+  "description": "개별화교육계획 월별 데이터를 자동으로 입력합니다",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "contextMenus",
+    "notifications",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://dge.neis.go.kr/*",
+    "https://www.iepon.site/*",
+    "https://*.vercel.app/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://dge.neis.go.kr/*"],
+      "js": ["content/content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/page-bridge.js", "content/page-bridge-dom.js"],
+      "matches": ["https://dge.neis.go.kr/*"]
+    }
+  ],
+  "background": {
+    "service_worker": "background/background.js"
+  }
+}
