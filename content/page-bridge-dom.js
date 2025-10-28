@@ -306,19 +306,31 @@
       }
     }
 
-    // 평가계획
+    // 평가계획 (마지막 필드)
     if (evaluation !== undefined) {
       const evalEl = await findElement(SELECTORS.evaluationTextarea);
       if (evalEl) {
         await setValue(evalEl, evaluation);
-        await delay(500); // 필드 간 딜레이 증가
+        
+        // 마지막 필드 입력 후 명시적으로 포커스 해제
+        evalEl.blur();
+        await delay(200);
+        
+        // 마지막 필드이므로 더 긴 대기 시간 필요 (값이 UI에 커밋되는 시간)
+        console.log('[Bridge-DOM] 평가계획 입력 완료, UI 커밋 대기 중...');
+        await delay(800); // 마지막 필드 대기
       } else {
         console.warn('[Bridge-DOM] 평가계획 필드를 찾을 수 없습니다');
       }
     }
 
+    // 모든 필드 입력 완료 후 body 클릭 (포커스를 완전히 빼냄)
+    console.log('[Bridge-DOM] 모든 필드 입력 완료, 포커스 해제 중...');
+    document.body.click();
+    await delay(300);
+
     console.log('[Bridge-DOM] ✅ 필드 설정 완료');
-    await delay(800); // 저장 전 추가 대기 증가
+    await delay(1000); // 저장 전 추가 대기 증가
     
     return true;
   }
