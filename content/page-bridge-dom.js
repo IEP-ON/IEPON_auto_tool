@@ -40,31 +40,49 @@
     element.click();
   }
 
-  // 입력 필드에 값 설정 (나이스 시스템이 인식할 수 있도록 모든 이벤트 발생)
-  function setValue(element, value) {
+  // 입력 필드에 값 설정 (마우스 클릭 + 키보드 입력으로 사람처럼 입력)
+  async function setValue(element, value) {
     if (!element) {
       throw new Error('Element not found');
     }
 
-    // 1. 포커스
+    // 1. 마우스 클릭으로 포커스
+    element.click();
+    await delay(100);
+
+    // 2. 기존 값 모두 선택 후 삭제 (Ctrl+A + Delete)
     element.focus();
+    element.select();
+    await delay(50);
+    
+    document.execCommand('delete');
+    await delay(100);
 
-    // 2. 값 설정
-    element.value = value;
+    // 3. 키보드로 한 글자씩 입력 (사람처럼)
+    for (let i = 0; i < value.length; i++) {
+      const char = value[i];
+      element.value += char;
+      
+      // 각 글자마다 input 이벤트 발생
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new KeyboardEvent('keydown', { 
+        key: char, 
+        bubbles: true,
+        cancelable: true 
+      }));
+      element.dispatchEvent(new KeyboardEvent('keyup', { 
+        key: char, 
+        bubbles: true,
+        cancelable: true 
+      }));
+      
+      // 글자 입력 간 약간의 딜레이 (사람처럼)
+      await delay(10);
+    }
 
-    // 3. 모든 이벤트 발생 (나이스가 값 변경을 인식하도록)
-    const events = [
-      new Event('focus', { bubbles: true }),
-      new Event('input', { bubbles: true }),
-      new Event('change', { bubbles: true }),
-      new Event('blur', { bubbles: true }),
-      new KeyboardEvent('keyup', { bubbles: true })
-    ];
-
-    events.forEach(event => element.dispatchEvent(event));
-
-    // 4. 포커스 해제
-    element.blur();
+    // 4. 최종 change 이벤트
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+    element.dispatchEvent(new Event('blur', { bubbles: true }));
 
     console.log(`[Bridge-DOM] 값 설정 완료: ${value.substring(0, 30)}...`);
   }
@@ -98,8 +116,8 @@
     clickElement(addBtn);
     console.log('[Bridge-DOM] ✅ 행추가 버튼 클릭 완료');
     
-    // 행이 추가될 시간 대기
-    await delay(500);
+    // 행이 추가될 시간 대기 (증가)
+    await delay(800);
     
     return true;
   }
@@ -231,7 +249,7 @@
     console.log('[Bridge-DOM] ✅ 월 선택 완료:', monthNum);
     
     // listbox가 사라질 때까지 대기 (자동으로 닫힘)
-    await delay(100);
+    await delay(200);
     
     // listbox가 사라졌는지 확인 (최대 1초 대기)
     const startWait = Date.now();
@@ -244,7 +262,7 @@
       await delay(50);
     }
     
-    await delay(100); // 추가 안정화 시간
+    await delay(300); // 추가 안정화 시간 증가
     
     return true;
   }
@@ -259,8 +277,8 @@
     if (goal !== undefined) {
       const goalEl = await findElement(SELECTORS.goalTextarea);
       if (goalEl) {
-        setValue(goalEl, goal);
-        await delay(300); // 필드 간 딜레이
+        await setValue(goalEl, goal);
+        await delay(500); // 필드 간 딜레이 증가
       } else {
         console.warn('[Bridge-DOM] 교육목표 필드를 찾을 수 없습니다');
       }
@@ -270,8 +288,8 @@
     if (content !== undefined) {
       const contentEl = await findElement(SELECTORS.contentTextarea);
       if (contentEl) {
-        setValue(contentEl, content);
-        await delay(300); // 필드 간 딜레이
+        await setValue(contentEl, content);
+        await delay(500); // 필드 간 딜레이 증가
       } else {
         console.warn('[Bridge-DOM] 교육내용 필드를 찾을 수 없습니다');
       }
@@ -281,8 +299,8 @@
     if (method !== undefined) {
       const methodEl = await findElement(SELECTORS.methodTextarea);
       if (methodEl) {
-        setValue(methodEl, method);
-        await delay(300); // 필드 간 딜레이
+        await setValue(methodEl, method);
+        await delay(500); // 필드 간 딜레이 증가
       } else {
         console.warn('[Bridge-DOM] 교육방법 필드를 찾을 수 없습니다');
       }
@@ -292,15 +310,15 @@
     if (evaluation !== undefined) {
       const evalEl = await findElement(SELECTORS.evaluationTextarea);
       if (evalEl) {
-        setValue(evalEl, evaluation);
-        await delay(300); // 필드 간 딜레이
+        await setValue(evalEl, evaluation);
+        await delay(500); // 필드 간 딜레이 증가
       } else {
         console.warn('[Bridge-DOM] 평가계획 필드를 찾을 수 없습니다');
       }
     }
 
     console.log('[Bridge-DOM] ✅ 필드 설정 완료');
-    await delay(500); // 저장 전 추가 대기
+    await delay(800); // 저장 전 추가 대기 증가
     
     return true;
   }
@@ -317,8 +335,8 @@
     clickElement(saveBtn);
     console.log('[Bridge-DOM] ✅ 저장 버튼 클릭 완료');
     
-    // 저장 완료 대기
-    await delay(1000);
+    // 저장 완료 대기 (증가)
+    await delay(1500);
     
     return true;
   }

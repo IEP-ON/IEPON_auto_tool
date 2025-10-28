@@ -505,15 +505,44 @@ async function startAutoFill() {
     console.log('[나이스 자동입력] 전송할 데이터:', payload);
     addLog(`${state.monthlyPlans.length}개 항목 전송 준비 완료`, 'info');
 
-    // Content Script에 메시지 전송
-    let response;
+    // 1. 먼저 NICE 탭 활성화
+    addLog('나이스 웹을 활성화 중...', 'info');
+    await chrome.tabs.update(tab.id, { active: true });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // 2. Content Script에 메시지 전송
     try {
       addLog('Content Script에 메시지 전송 중...', 'info');
-      response = await chrome.tabs.sendMessage(tab.id, {
+      
+      // 메시지 전송 시도
+      chrome.tabs.sendMessage(tab.id, {
         action: 'fillMonthlyPlans',
         data: payload
+      }).catch(async (err) => {
+        console.error('[나이스 자동입력] 메시지 전송 오류:', err);
+        const message = err?.message || '';
+        if (message.includes('Could not establish connection') || message.includes('Receiving end does not exist')) {
+          console.log('[나이스 자동입력] Content Script 재주입 시도...');
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content/content-script.js']
+          });
+          
+          // 재시도
+          chrome.tabs.sendMessage(tab.id, {
+            action: 'fillMonthlyPlans',
+            data: payload
+          });
+        }
       });
-      console.log('[나이스 자동입력] 응답 받음:', response);
+      
+      // 3. 메시지 전송 후 즉시 팝업 닫기 (응답 기다리지 않음)
+      addLog('팝업을 닫고 자동입력 시작...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      console.log('[나이스 자동입력] 팝업 닫기 시작');
+      window.close();
+      
     } catch (err) {
       console.error('[나이스 자동입력] 메시지 전송 오류:', err);
       const message = err?.message || '';
@@ -524,25 +553,17 @@ async function startAutoFill() {
           files: ['content/content-script.js']
         });
 
-        addLog('재시도 중...', 'info');
-        response = await chrome.tabs.sendMessage(tab.id, {
+        addLog('재시도 후 팝업 닫기...', 'info');
+        chrome.tabs.sendMessage(tab.id, {
           action: 'fillMonthlyPlans',
           data: payload
         });
-        console.log('[나이스 자동입력] 재시도 응답:', response);
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+        window.close();
       } else {
         throw err;
       }
-    }
-
-    if (response.success) {
-      showNotification('자동 입력이 완료되었습니다', 'success');
-      addLog('자동 입력 완료', 'success');
-      
-      // 진행 상황 100%
-      updateProgress(state.monthlyPlans.length, state.monthlyPlans.length);
-    } else {
-      throw new Error(response.error || '알 수 없는 오류');
     }
   } catch (error) {
     console.error('[나이스 자동입력] 오류 발생:', error);
