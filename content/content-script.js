@@ -343,12 +343,12 @@ class NiceAutoFiller {
       
       // 팝업이 닫힐 시간을 충분히 줌 (매우 중요!)
       console.log('[나이스 자동입력] 팝업 닫힘 대기 중...');
-      await this.wait(500);
+      await this.wait(300); // 500ms -> 300ms
       
       // 페이지에 포커스를 주기 위해 body 클릭
       console.log('[나이스 자동입력] 페이지 포커스 설정 중...');
       document.body.click();
-      await this.wait(300);
+      await this.wait(150); // 300ms -> 150ms
 
       for (let i = 0; i < total; i++) {
         const data = payload.plans[i];
@@ -365,8 +365,8 @@ class NiceAutoFiller {
           const result = await this.fillMonthlyPlanSimple(data);
           results.push(result);
 
-          // 각 입력 사이 간격 (증가)
-          await this.wait(500);
+          // 각 입력 사이 간격 (최적화)
+          await this.wait(200); // 500ms -> 200ms
 
         } catch (error) {
           console.error(`[나이스 자동입력] ${i + 1}번째 항목 입력 실패:`, error);
