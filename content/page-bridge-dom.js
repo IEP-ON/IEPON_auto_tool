@@ -10,11 +10,48 @@
     goalTextarea: '[title="교육목표"] textarea',
     contentTextarea: '[title="교육내용"] textarea',
     methodTextarea: '[title="교육방법"] textarea',
-    evaluationTextarea: '[title="평가계획"] textarea'
+    evaluationTextarea: '[title="평가계획"] textarea',
+    // 월별평가용 (평가 페이지에서 "평가" 필드)
+    evalTextarea: '[aria-label*="평가계획"][title="평가계획"]:last-of-type textarea'
+  };
+  
+  // 그리드 행 셀렉터 (평가 페이지용)
+  const GRID_SELECTORS = {
+    rows: '[role="row"]',
+    monthCell: '[role="gridcell"][aria-label*="월"]'
+  };
+
+  // 입력 설정 (popup에서 전달받음)
+  let inputConfig = {
+    speed: 'normal',
+    humanMode: true
+  };
+
+  // 속도 설정 (ms)
+  const SPEED_SETTINGS = {
+    fast: { charDelay: [5, 15], fieldDelay: [100, 200] },
+    normal: { charDelay: [20, 60], fieldDelay: [200, 400] },
+    slow: { charDelay: [50, 120], fieldDelay: [400, 700] }
   };
 
   function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // 랜덤 딜레이 (사람처럼 불규칙하게)
+  function randomDelay(min, max) {
+    const base = Math.random() * (max - min) + min;
+    // 가끔 약간 더 긴 딜레이 (생각하는 것처럼)
+    const extra = Math.random() < 0.1 ? Math.random() * 100 : 0;
+    return delay(base + extra);
+  }
+
+  // 한글 조합 처리를 위한 유틸리티
+  function isKorean(char) {
+    const code = char.charCodeAt(0);
+    return (code >= 0xAC00 && code <= 0xD7AF) || // 완성형 한글
+           (code >= 0x1100 && code <= 0x11FF) || // 한글 자모
+           (code >= 0x3130 && code <= 0x318F);   // 호환용 한글 자모
   }
 
   // 요소 찾기 (재시도 포함)
@@ -40,15 +77,17 @@
     element.click();
   }
 
-  // 입력 필드에 값 설정 (빠른 속도 - 직접 값 설정 + 이벤트 발생)
+  // 입력 필드에 값 설정 (사람처럼 타이핑)
   async function setValue(element, value) {
     if (!element) {
       throw new Error('Element not found');
     }
 
-    // 1. 마우스 클릭으로 포커스
+    const speedConfig = SPEED_SETTINGS[inputConfig.speed] || SPEED_SETTINGS.normal;
+
+    // 1. 마우스 클릭으로 포커스 (사람처럼 약간의 딜레이)
     element.click();
-    await delay(50);
+    await randomDelay(30, 80);
 
     // 2. 포커스 설정
     element.focus();
@@ -56,13 +95,18 @@
     // 3. 기존 값 초기화
     element.value = '';
     element.dispatchEvent(new Event('input', { bubbles: true }));
-    await delay(30);
+    await randomDelay(20, 50);
 
-    // 4. 값 직접 설정 (빠른 방식)
-    element.value = value;
+    if (inputConfig.humanMode) {
+      // 사람처럼 한 글자씩 타이핑
+      await typeHuman(element, value, speedConfig);
+    } else {
+      // 빠른 입력 모드
+      element.value = value;
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    }
 
-    // 5. 이벤트 발생 (NICE 시스템이 값 변경을 인식하도록)
-    element.dispatchEvent(new Event('input', { bubbles: true }));
+    // 마무리 이벤트
     element.dispatchEvent(new KeyboardEvent('keydown', { 
       key: 'End', 
       bubbles: true,
@@ -78,21 +122,74 @@
     console.log(`[Bridge-DOM] 값 설정 완료: ${value.substring(0, 30)}...`);
   }
 
+  // 사람처럼 타이핑하는 함수
+  async function typeHuman(element, text, speedConfig) {
+    const [minDelay, maxDelay] = speedConfig.charDelay;
+    
+    // 청크 단위로 입력 (성능 최적화)
+    const chunkSize = inputConfig.speed === 'fast' ? 10 : 
+                      inputConfig.speed === 'slow' ? 1 : 3;
+    
+    for (let i = 0; i < text.length; i += chunkSize) {
+      const chunk = text.slice(i, Math.min(i + chunkSize, text.length));
+      
+      // 현재 값에 청크 추가
+      element.value = text.slice(0, i + chunk.length);
+      
+      // input 이벤트 발생
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      
+      // 청크 내 각 문자에 대해 keydown/keyup 이벤트 발생 (감지 방지)
+      for (const char of chunk) {
+        element.dispatchEvent(new KeyboardEvent('keydown', {
+          key: char,
+          bubbles: true,
+          cancelable: true
+        }));
+        element.dispatchEvent(new KeyboardEvent('keyup', {
+          key: char,
+          bubbles: true,
+          cancelable: true
+        }));
+      }
+      
+      // 랜덤 딜레이
+      await randomDelay(minDelay, maxDelay);
+      
+      // 가끔 더 긴 정지 (단어 끝이나 문장 끝에서)
+      if (chunk.includes(' ') || chunk.includes('.') || chunk.includes(',')) {
+        await randomDelay(minDelay * 2, maxDelay * 2);
+      }
+    }
+  }
+
   // 초기화 확인
   async function handleEnsureApp() {
     console.log('[Bridge-DOM] 초기화 확인 중...');
     
-    // 행추가 버튼이 있는지 확인
-    const addBtn = await findElement(SELECTORS.addRowBtn, 3000);
-    if (!addBtn) {
-      throw new Error('월별계획 페이지를 찾을 수 없습니다');
+    // 행추가 버튼이 있는지 확인 (월별계획 페이지)
+    const addBtn = await findElement(SELECTORS.addRowBtn, 2000);
+    if (addBtn) {
+      console.log('[Bridge-DOM] ✅ 월별계획 페이지 확인됨');
+      return {
+        ready: true,
+        pageType: 'plan',
+        message: '월별계획 페이지 준비 완료'
+      };
+    }
+    
+    // 저장 버튼이 있는지 확인 (월별평가 페이지)
+    const saveBtn = await findElement(SELECTORS.saveBtn, 2000);
+    if (saveBtn) {
+      console.log('[Bridge-DOM] ✅ 월별평가 페이지 확인됨');
+      return {
+        ready: true,
+        pageType: 'evaluation',
+        message: '월별평가 페이지 준비 완료'
+      };
     }
 
-    console.log('[Bridge-DOM] ✅ 월별계획 페이지 확인됨');
-    return {
-      ready: true,
-      message: '준비 완료'
-    };
+    throw new Error('월별계획/평가 페이지를 찾을 수 없습니다');
   }
 
   // 행 추가
@@ -262,54 +359,63 @@
   async function handleSetFields(payload) {
     console.log('[Bridge-DOM] 필드 설정 시작...', payload);
     
-    const { goal, content, method, evaluation } = payload || {};
+    const { goal, content, method, evaluation, config } = payload || {};
+    
+    // 설정 업데이트
+    if (config) {
+      inputConfig = { ...inputConfig, ...config };
+      console.log('[Bridge-DOM] 입력 설정:', inputConfig);
+    }
+    
+    const speedConfig = SPEED_SETTINGS[inputConfig.speed] || SPEED_SETTINGS.normal;
+    const [minFieldDelay, maxFieldDelay] = speedConfig.fieldDelay;
 
     // 교육목표
-    if (goal !== undefined) {
+    if (goal !== undefined && goal !== '') {
       const goalEl = await findElement(SELECTORS.goalTextarea);
       if (goalEl) {
         await setValue(goalEl, goal);
-        await delay(200); // 필드 간 딜레이 감소 (500ms -> 200ms)
+        await randomDelay(minFieldDelay, maxFieldDelay);
       } else {
         console.warn('[Bridge-DOM] 교육목표 필드를 찾을 수 없습니다');
       }
     }
 
     // 교육내용
-    if (content !== undefined) {
+    if (content !== undefined && content !== '') {
       const contentEl = await findElement(SELECTORS.contentTextarea);
       if (contentEl) {
         await setValue(contentEl, content);
-        await delay(200); // 필드 간 딜레이 감소 (500ms -> 200ms)
+        await randomDelay(minFieldDelay, maxFieldDelay);
       } else {
         console.warn('[Bridge-DOM] 교육내용 필드를 찾을 수 없습니다');
       }
     }
 
     // 교육방법
-    if (method !== undefined) {
+    if (method !== undefined && method !== '') {
       const methodEl = await findElement(SELECTORS.methodTextarea);
       if (methodEl) {
         await setValue(methodEl, method);
-        await delay(200); // 필드 간 딜레이 감소 (500ms -> 200ms)
+        await randomDelay(minFieldDelay, maxFieldDelay);
       } else {
         console.warn('[Bridge-DOM] 교육방법 필드를 찾을 수 없습니다');
       }
     }
 
     // 평가계획 (마지막 필드)
-    if (evaluation !== undefined) {
+    if (evaluation !== undefined && evaluation !== '') {
       const evalEl = await findElement(SELECTORS.evaluationTextarea);
       if (evalEl) {
         await setValue(evalEl, evaluation);
         
         // 마지막 필드 입력 후 명시적으로 포커스 해제
         evalEl.blur();
-        await delay(100);
+        await randomDelay(80, 150);
         
         // 마지막 필드이므로 대기 시간 필요 (값이 UI에 커밋되는 시간)
         console.log('[Bridge-DOM] 평가계획 입력 완료, UI 커밋 대기 중...');
-        await delay(400); // 마지막 필드 대기 (800ms -> 400ms)
+        await randomDelay(minFieldDelay * 1.5, maxFieldDelay * 1.5);
       } else {
         console.warn('[Bridge-DOM] 평가계획 필드를 찾을 수 없습니다');
       }
@@ -318,10 +424,10 @@
     // 모든 필드 입력 완료 후 body 클릭 (포커스를 완전히 빼냄)
     console.log('[Bridge-DOM] 모든 필드 입력 완료, 포커스 해제 중...');
     document.body.click();
-    await delay(150);
+    await randomDelay(100, 200);
 
     console.log('[Bridge-DOM] ✅ 필드 설정 완료');
-    await delay(500); // 저장 전 대기 (1000ms -> 500ms)
+    await randomDelay(minFieldDelay, maxFieldDelay);
     
     return true;
   }
@@ -350,6 +456,234 @@
     return { selected: null };
   }
 
+  // 그리드에서 행 클릭 헬퍼
+  async function clickRowCell(row) {
+    const monthCell = row.querySelector('[role="gridcell"][aria-label*="월 "]');
+    const numberCell = row.querySelector('[role="gridcell"][aria-label*="순번"]');
+    const targetCell = numberCell || monthCell;
+    
+    if (!targetCell) return false;
+    
+    const rect = targetCell.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    const mouseOptions = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: centerX,
+      clientY: centerY
+    };
+    
+    targetCell.dispatchEvent(new MouseEvent('mousedown', mouseOptions));
+    await delay(50);
+    targetCell.dispatchEvent(new MouseEvent('mouseup', mouseOptions));
+    await delay(50);
+    targetCell.dispatchEvent(new MouseEvent('click', mouseOptions));
+    await delay(300);
+    
+    return true;
+  }
+  
+  // 그리드 스크롤 (개선됨: scrollTop 조작 + Wheel 이벤트)
+  async function scrollGridDown(times = 3) {
+    console.log(`[Bridge-DOM] 그리드 스크롤 시도 (강력 모드)...`);
+    
+    const rows = document.querySelectorAll('[role="row"]');
+    if (rows.length === 0) return;
+
+    const lastRow = rows[rows.length - 1];
+    
+    // 1. 스크롤 가능한 컨테이너 찾기
+    let scrollContainer = null;
+    
+    // 그리드 요소
+    const grid = document.querySelector('[role="grid"]');
+    
+    if (grid) {
+       // 그리드 내부의 모든 div를 검사하여 스크롤 가능한 요소 찾기
+       // eXbuilder6 등의 프레임워크는 보통 grid 내부에 별도의 body div가 있고 거기에 스크롤이 있음
+       const divs = grid.querySelectorAll('div');
+       for (const div of divs) {
+           const style = window.getComputedStyle(div);
+           // overflowY가 auto/scroll이고 실제 내용이 보여지는 높이보다 큰 경우
+           if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && div.scrollHeight > div.clientHeight) {
+               scrollContainer = div;
+               console.log('[Bridge-DOM] 그리드 내부 스크롤 영역 발견');
+               break;
+           }
+       }
+    }
+    
+    // 못 찾았으면 마지막 행의 부모들을 타고 올라가며 찾기
+    if (!scrollContainer) {
+        let parent = lastRow.parentElement;
+        while (parent && parent !== document.body) {
+            const style = window.getComputedStyle(parent);
+            if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight) {
+                scrollContainer = parent;
+                console.log('[Bridge-DOM] 행의 부모에서 스크롤 영역 발견');
+                break;
+            }
+            parent = parent.parentElement;
+        }
+    }
+
+    // 스크롤 실행
+    if (scrollContainer) {
+        console.log(`[Bridge-DOM] scrollTop 조작: ${scrollContainer.scrollTop} -> +${150 * times}`);
+        const scrollAmount = 150 * times; // 대략적인 행 높이 * 횟수
+        scrollContainer.scrollTop += scrollAmount;
+        
+        // 스크롤 이벤트 강제 발송 (UI 업데이트 트리거)
+        scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+        await delay(200);
+    } else {
+        console.log('[Bridge-DOM] 스크롤 컨테이너 못 찾음, lastRow.scrollIntoView(start) 시도');
+        // 컨테이너를 못 찾으면 마지막 행을 화면 상단으로 올려서 강제로 아래 내용이 나오게 함
+        lastRow.scrollIntoView({ behavior: 'auto', block: 'start' });
+        await delay(200);
+    }
+    
+    // 2. 휠 이벤트도 같이 발송 (보완책 - 일부 프레임워크는 휠 이벤트로 가상 스크롤 처리)
+    const target = scrollContainer || grid || lastRow;
+    if (target) {
+        console.log('[Bridge-DOM] Wheel 이벤트 발송');
+        for(let i=0; i<times; i++) {
+             target.dispatchEvent(new WheelEvent('wheel', {
+                deltaY: 100,
+                bubbles: true,
+                cancelable: true,
+                view: window
+            }));
+            await delay(50);
+        }
+    }
+
+    await delay(500); // 렌더링 대기
+  }
+  
+  // 현재 보이는 행에서 월 찾기
+  function findMonthRow(month) {
+    const rows = document.querySelectorAll('[role="row"]');
+    
+    for (const row of rows) {
+      const monthCell = row.querySelector('[role="gridcell"][aria-label*="월 "]');
+      if (monthCell) {
+        const cellText = monthCell.textContent.trim();
+        if (cellText === String(month)) {
+          return row;
+        }
+      }
+    }
+    return null;
+  }
+
+  // 그리드에서 특정 월 행 클릭
+  async function handleSelectRowByMonth(payload) {
+    const { month, config } = payload || {};
+    console.log(`[Bridge-DOM] ${month}월 행 선택 시작...`);
+    
+    if (config) {
+      inputConfig = { ...inputConfig, ...config };
+    }
+    
+    // 1차 시도: 현재 화면에서 찾기
+    let targetRow = findMonthRow(month);
+    
+    if (targetRow) {
+      console.log(`[Bridge-DOM] ${month}월 행 찾음 (1차), 클릭`);
+      await clickRowCell(targetRow);
+      console.log(`[Bridge-DOM] ✅ ${month}월 행 선택 완료`);
+      return true;
+    }
+    
+    // 2차 시도: 아래로 스크롤 후 찾기
+    console.log(`[Bridge-DOM] ${month}월 행 안 보임, 스크롤 시도...`);
+    await scrollGridDown(3);
+    
+    targetRow = findMonthRow(month);
+    if (targetRow) {
+      console.log(`[Bridge-DOM] ${month}월 행 찾음 (스크롤 후), 클릭`);
+      await clickRowCell(targetRow);
+      console.log(`[Bridge-DOM] ✅ ${month}월 행 선택 완료`);
+      return true;
+    }
+    
+    // 3차 시도: 더 스크롤
+    console.log(`[Bridge-DOM] 추가 스크롤 시도...`);
+    await scrollGridDown(3);
+    
+    targetRow = findMonthRow(month);
+    if (targetRow) {
+      console.log(`[Bridge-DOM] ${month}월 행 찾음 (추가 스크롤 후), 클릭`);
+      await clickRowCell(targetRow);
+      console.log(`[Bridge-DOM] ✅ ${month}월 행 선택 완료`);
+      return true;
+    }
+    
+    console.warn(`[Bridge-DOM] ${month}월 행을 찾을 수 없습니다`);
+    return false;
+  }
+
+  // 월별평가 - 평가 텍스트 입력
+  async function handleSetEvalText(payload) {
+    const { eval_text, config } = payload || {};
+    console.log('[Bridge-DOM] 평가 텍스트 입력 시작...', eval_text);
+    
+    if (config) {
+      inputConfig = { ...inputConfig, ...config };
+    }
+    
+    const speedConfig = SPEED_SETTINGS[inputConfig.speed] || SPEED_SETTINGS.normal;
+    const [minFieldDelay, maxFieldDelay] = speedConfig.fieldDelay;
+    
+    // 평가 필드 찾기: aria-label="평가계획"인 textarea 중 마지막 것 (평가 필드)
+    // 평가 페이지에서는 "평가계획" textarea 다음에 "평가" textarea가 있음 (둘 다 aria-label="평가계획")
+    const evalTextareas = document.querySelectorAll('textarea[aria-label="평가계획"]');
+    console.log(`[Bridge-DOM] 평가계획 textarea 수: ${evalTextareas.length}`);
+    
+    let evalTextarea = null;
+    
+    // aria-label="평가계획"인 textarea 중 마지막 것이 "평가" 필드
+    if (evalTextareas.length >= 2) {
+      evalTextarea = evalTextareas[evalTextareas.length - 1];
+    } else if (evalTextareas.length === 1) {
+      // 하나뿐이면 그게 평가 필드
+      evalTextarea = evalTextareas[0];
+    }
+    
+    // 못 찾으면 마지막 빈 textarea
+    if (!evalTextarea) {
+      const allTextareas = document.querySelectorAll('textarea');
+      for (let i = allTextareas.length - 1; i >= 0; i--) {
+        if (allTextareas[i].value === '') {
+          evalTextarea = allTextareas[i];
+          console.log('[Bridge-DOM] 마지막 빈 textarea 사용');
+          break;
+        }
+      }
+    }
+    
+    if (!evalTextarea) {
+      console.warn('[Bridge-DOM] 평가 필드를 찾을 수 없습니다');
+      throw new Error('평가 필드를 찾을 수 없습니다');
+    }
+    
+    console.log('[Bridge-DOM] 평가 필드 찾음, 입력 시작');
+    await setValue(evalTextarea, eval_text);
+    await randomDelay(minFieldDelay, maxFieldDelay);
+    
+    // 포커스 해제
+    evalTextarea.blur();
+    document.body.click();
+    await randomDelay(100, 200);
+    
+    console.log('[Bridge-DOM] ✅ 평가 텍스트 입력 완료');
+    return true;
+  }
+
   // 핸들러 맵
   const handlers = {
     ensureApp: handleEnsureApp,
@@ -357,7 +691,9 @@
     selectMonth: handleSelectMonth,
     setFields: handleSetFields,
     save: handleSave,
-    ensureStudent: handleEnsureStudent
+    ensureStudent: handleEnsureStudent,
+    selectRowByMonth: handleSelectRowByMonth,
+    setEvalText: handleSetEvalText
   };
 
   // 메시지 리스너

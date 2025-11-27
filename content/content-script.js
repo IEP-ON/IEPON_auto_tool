@@ -300,13 +300,14 @@ class NiceAutoFiller {
     });
   }
 
-  async setFields(plan, rowIndex = null) {
+  async setFields(plan, rowIndex = null, config = {}) {
     await this.bridge.send('setFields', {
       rowIndex,
       goal: plan.goal ?? '',
       content: plan.content ?? '',
       method: plan.method ?? '',
-      evaluation: plan.evaluation ?? ''
+      evaluation: plan.evaluation ?? '',
+      config: config
     });
   }
 
@@ -314,7 +315,122 @@ class NiceAutoFiller {
     await this.bridge.send('save');
   }
 
-  async fillMonthlyPlanSimple(plan) {
+  // 평가 페이지에서 특정 월 행 선택
+  async selectRowByMonth(month, config = {}) {
+    await this.bridge.send('selectRowByMonth', { month, config });
+  }
+
+  // 평가 텍스트 입력
+  async setEvalText(evalText, config = {}) {
+    await this.bridge.send('setEvalText', { eval_text: evalText, config });
+  }
+
+  // 단일 월 평가 입력
+  async fillMonthlyEvalSimple(plan, config = {}) {
+    try {
+      // 해당 월 행 선택
+      if (plan.month) {
+        await this.selectRowByMonth(plan.month, config);
+      }
+
+      // 평가 텍스트 입력
+      if (plan.eval_text) {
+        await this.setEvalText(plan.eval_text, config);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('[나이스 자동입력] 단일 월 평가 입력 실패:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // 평가 일괄 입력 워크플로우
+  async fillEvalWorkflow(payload) {
+    try {
+      if (!payload || !Array.isArray(payload.plans) || payload.plans.length === 0) {
+        throw new Error('입력할 평가 데이터가 없습니다');
+      }
+
+      const results = [];
+      const total = payload.plans.length;
+      
+      // 입력 설정 추출
+      const config = {
+        speed: payload.speed || 'normal',
+        humanMode: payload.humanMode !== false
+      };
+
+      console.log(`[나이스 자동입력] 평가 일괄 입력 시작: ${total}개 항목`);
+      console.log(`[나이스 자동입력] 설정: 속도=${config.speed}, 휴먼모드=${config.humanMode}`);
+      
+      // 팝업이 닫힐 시간을 충분히 줌
+      console.log('[나이스 자동입력] 팝업 닫힘 대기 중...');
+      await this.wait(300);
+      
+      // 페이지에 포커스 설정
+      document.body.click();
+      await this.wait(150);
+
+      for (let i = 0; i < total; i++) {
+        const data = payload.plans[i];
+        
+        try {
+          // 진행 상황 전송
+          chrome.runtime.sendMessage({
+            action: 'progress',
+            current: i,
+            total: total
+          });
+
+          // 월별 평가 입력
+          const result = await this.fillMonthlyEvalSimple(data, config);
+          results.push(result);
+
+          // 각 입력 사이 간격
+          const betweenDelay = config.speed === 'fast' ? 100 : 
+                               config.speed === 'slow' ? 400 : 200;
+          await this.wait(betweenDelay);
+
+        } catch (error) {
+          console.error(`[나이스 자동입력] ${i + 1}번째 평가 입력 실패:`, error);
+          results.push({ success: false, error: error.message });
+        }
+      }
+
+      // 마지막에 저장
+      try {
+        await this.save();
+      } catch (error) {
+        console.error('[나이스 자동입력] 최종 저장 실패:', error);
+      }
+
+      // 완료 진행 상황 전송
+      chrome.runtime.sendMessage({
+        action: 'progress',
+        current: total,
+        total: total
+      });
+
+      const successCount = results.filter(r => r.success).length;
+      console.log(`[나이스 자동입력] 평가 일괄 입력 완료: ${successCount}/${total} 성공`);
+
+      return {
+        success: successCount === total,
+        results: results,
+        successCount: successCount,
+        totalCount: total
+      };
+    } catch (error) {
+      console.error('[나이스 자동입력] 평가 워크플로우 실패:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async fillMonthlyPlanSimple(plan, config = {}) {
     try {
       await this.addRow();
 
@@ -322,7 +438,7 @@ class NiceAutoFiller {
         await this.selectMonth(plan.month);
       }
 
-      await this.setFields(plan);
+      await this.setFields(plan, null, config);
       return { success: true };
     } catch (error) {
       console.error('[나이스 자동입력] 단일 월 입력 실패:', error);
@@ -338,17 +454,24 @@ class NiceAutoFiller {
 
       const results = [];
       const total = payload.plans.length;
+      
+      // 입력 설정 추출
+      const config = {
+        speed: payload.speed || 'normal',
+        humanMode: payload.humanMode !== false
+      };
 
       console.log(`[나이스 자동입력] 일괄 입력 시작: ${total}개 항목`);
+      console.log(`[나이스 자동입력] 설정: 속도=${config.speed}, 휴먼모드=${config.humanMode}`);
       
       // 팝업이 닫힐 시간을 충분히 줌 (매우 중요!)
       console.log('[나이스 자동입력] 팝업 닫힘 대기 중...');
-      await this.wait(300); // 500ms -> 300ms
+      await this.wait(300);
       
       // 페이지에 포커스를 주기 위해 body 클릭
       console.log('[나이스 자동입력] 페이지 포커스 설정 중...');
       document.body.click();
-      await this.wait(150); // 300ms -> 150ms
+      await this.wait(150);
 
       for (let i = 0; i < total; i++) {
         const data = payload.plans[i];
@@ -361,12 +484,14 @@ class NiceAutoFiller {
             total: total
           });
 
-          // 월별 계획 입력
-          const result = await this.fillMonthlyPlanSimple(data);
+          // 월별 계획 입력 (config 전달)
+          const result = await this.fillMonthlyPlanSimple(data, config);
           results.push(result);
 
-          // 각 입력 사이 간격 (최적화)
-          await this.wait(200); // 500ms -> 200ms
+          // 각 입력 사이 간격 (속도에 따라 조절)
+          const betweenDelay = config.speed === 'fast' ? 100 : 
+                               config.speed === 'slow' ? 400 : 200;
+          await this.wait(betweenDelay);
 
         } catch (error) {
           console.error(`[나이스 자동입력] ${i + 1}번째 항목 입력 실패:`, error);
@@ -552,6 +677,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         console.log('[나이스 자동입력] 자동입력 워크플로우 시작');
         const result = await autoFiller.fillWorkflow(message.data);
+        sendResponse(result);
+      } catch (error) {
+        console.error('[나이스 자동입력] 오류:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+
+    return true;
+  }
+
+  // 월별평가 자동입력
+  if (message.action === 'fillMonthlyEvaluations') {
+    (async () => {
+      try {
+        console.log('[나이스 자동입력] fillMonthlyEvaluations 메시지 받음');
+        
+        if (!autoFiller) {
+          autoFiller = new NiceAutoFiller();
+        }
+
+        if (!autoFiller.isInitialized) {
+          console.log('[나이스 자동입력] 초기화 시작...');
+          
+          let initialized = false;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            console.log(`[나이스 자동입력] 초기화 시도 ${attempt}/3`);
+            
+            if (attempt === 1) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            initialized = await autoFiller.init();
+            
+            if (initialized) {
+              console.log('[나이스 자동입력] ✅ 초기화 성공!');
+              break;
+            } else {
+              console.warn(`[나이스 자동입력] ❌ 초기화 실패 (시도 ${attempt}/3)`);
+              if (attempt < 3) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+            }
+          }
+          
+          if (!initialized) {
+            sendResponse({ 
+              success: false, 
+              error: '나이스 시스템 초기화 실패. 월별평가 페이지에서 실행 중인지 확인해주세요.' 
+            });
+            return;
+          }
+        }
+
+        console.log('[나이스 자동입력] 평가 자동입력 워크플로우 시작');
+        const result = await autoFiller.fillEvalWorkflow(message.data);
         sendResponse(result);
       } catch (error) {
         console.error('[나이스 자동입력] 오류:', error);

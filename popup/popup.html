@@ -7,258 +7,227 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
+  <div class="app">
     <!-- 헤더 -->
     <header class="header">
-      <h1>📚 나이스 월별계획 자동입력</h1>
-      <p class="version">v1.0.0</p>
-      <button id="toggleAdvanced" class="btn-link" style="margin-left: auto;">⚙️ 고급 설정 보기</button>
+      <div class="header-content">
+        <div class="logo">
+          <span class="logo-icon">📝</span>
+          <div class="logo-text">
+            <h1>월별계획 자동입력</h1>
+            <span class="status-badge" id="statusBadge">
+              <span class="status-dot"></span>
+              <span id="statusText">확인 중...</span>
+            </span>
+          </div>
+        </div>
+        <button id="settingsBtn" class="icon-btn" title="설정">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
     </header>
 
-    <!-- 연결 상태 -->
-    <div class="connection-status hidden" id="connectionStatus">
-      <div class="status-indicator" id="statusIndicator"></div>
-      <span id="statusText">연결 확인 중...</span>
-    </div>
+    <!-- 모드 선택 탭 -->
+    <nav class="mode-tabs">
+      <button class="mode-tab active" data-mode="plan">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+        </svg>
+        월별계획
+      </button>
+      <button class="mode-tab" data-mode="evaluation">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        월별평가
+      </button>
+    </nav>
 
-    <!-- 웹사이트 연동 섹션 -->
-    <section class="section hidden" id="websiteConnectionSection">
-      <h2>🔗 웹사이트 연동</h2>
-      <div class="form-group">
-        <label for="websiteUrl">웹사이트 URL</label>
-        <input 
-          type="text" 
-          id="websiteUrl" 
-          placeholder="https://www.iepon.site"
-          value=""
-        />
-        <button id="testConnection" class="btn btn-secondary">연결 테스트</button>
-      </div>
-
-      <div class="form-group">
-        <label for="apiKey">API 키 (선택사항)</label>
-        <input 
-          type="password" 
-          id="apiKey" 
-          placeholder="Supabase API Key"
-        />
-      </div>
-
-      <button id="saveSettings" class="btn btn-primary">설정 저장</button>
-    </section>
-
-    <!-- 데이터 입력 방식 선택 -->
-    <section class="section hidden" id="inputMethodSection">
-      <h2>📋 데이터 입력 방식</h2>
-      <div class="radio-group">
-        <label class="radio-label">
-          <input type="radio" name="inputMethod" value="website">
-          <span>웹사이트에서 가져오기</span>
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="inputMethod" value="manual">
-          <span>직접 입력</span>
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="inputMethod" value="json" checked>
-          <span>JSON 붙여넣기</span>
-        </label>
-      </div>
-    </section>
-
-    <!-- 웹사이트 데이터 섹션 -->
-    <section class="section hidden" id="websiteDataSection">
-      <h2>👤 학생 선택</h2>
-      <div class="form-group">
-        <select id="studentSelect" class="select-box">
-          <option value="">학생을 선택하세요</option>
-        </select>
-        <button id="loadStudents" class="btn btn-secondary">학생 목록 불러오기</button>
-      </div>
-
-      <div class="form-group">
-        <label for="studentName">선택 학생 이름</label>
-        <input
-          type="text"
-          id="studentName"
-          placeholder="예: 곽하윤"
-        />
-      </div>
-
-      <div class="form-group">
-        <label>📅 학년도/학기</label>
-        <div class="inline-group">
-          <input type="text" id="year" placeholder="2024" class="input-small" />
-          <select id="semester" class="select-small">
-            <option value="1">1학기</option>
-            <option value="2">2학기</option>
-          </select>
+    <!-- 메인 컨텐츠 -->
+    <main class="main">
+      <!-- 스텝 1: 데이터 입력 -->
+      <section class="card">
+        <div class="card-header">
+          <span class="step-number">1</span>
+          <h2>데이터 입력</h2>
         </div>
-      </div>
+        <div class="card-body">
+          <div class="input-area">
+            <textarea 
+              id="jsonData" 
+              class="json-input"
+              placeholder='JSON 데이터를 붙여넣으세요
 
-      <div class="form-group">
-        <label>🏫 학년/반/번호</label>
-        <div class="inline-group">
-          <select id="grade" class="select-small">
-            <option value="">학년</option>
-            <option value="1">1학년</option>
-            <option value="2">2학년</option>
-            <option value="3">3학년</option>
-            <option value="4">4학년</option>
-            <option value="5">5학년</option>
-            <option value="6">6학년</option>
-          </select>
-          <input type="text" id="className" placeholder="반" class="input-small" />
-          <input type="text" id="studentNumber" placeholder="번호" class="input-small" />
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label for="inputType">🗂️ 입력구분</label>
-        <select id="inputType" class="select-box">
-          <option value="">선택하세요</option>
-          <option value="교과영역">교과영역</option>
-          <option value="생활지원영역">생활지원영역</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="subject">📘 영역</label>
-        <input
-          type="text"
-          id="subject"
-          placeholder="예: 국어"
-        />
-      </div>
-
-      <button id="fetchData" class="btn btn-primary">데이터 가져오기</button>
-    </section>
-
-    <!-- 수동 입력 섹션 -->
-    <section class="section hidden" id="manualInputSection">
-      <h2>✏️ 수동 입력</h2>
-      <div class="form-group">
-        <label for="manualMonth">월</label>
-        <input type="text" id="manualMonth" placeholder="예: 3 또는 3,4,5" />
-      </div>
-      <div class="form-group">
-        <label for="manualGoal">교육목표</label>
-        <textarea id="manualGoal" rows="3" placeholder="교육목표를 입력하세요"></textarea>
-      </div>
-      <div class="form-group">
-        <label for="manualContent">교육내용</label>
-        <textarea id="manualContent" rows="3" placeholder="교육내용을 입력하세요"></textarea>
-      </div>
-      <div class="form-group">
-        <label for="manualMethod">교육방법</label>
-        <textarea id="manualMethod" rows="3" placeholder="교육방법을 입력하세요"></textarea>
-      </div>
-      <div class="form-group">
-        <label for="manualEvaluation">평가계획</label>
-        <textarea id="manualEvaluation" rows="3" placeholder="평가계획을 입력하세요"></textarea>
-      </div>
-      <button id="addManualData" class="btn btn-primary">데이터 추가</button>
-    </section>
-
-    <!-- JSON 입력 섹션 -->
-    <section class="section" id="jsonInputSection">
-      <h2>📄 JSON 데이터 입력</h2>
-      <div class="form-group">
-        <textarea 
-          id="jsonData" 
-          rows="10" 
-          placeholder='[
+예시:
+[
   {
     "month": "3",
-    "goal": "교육목표",
-    "content": "교육내용",
-    "method": "교육방법",
-    "evaluation": "평가계획"
+    "goal": "읽기 능력 향상",
+    "content": "그림책 읽기",
+    "method": "1:1 지도",
+    "evaluation": "수행평가"
   }
 ]'></textarea>
-      </div>
-      <button id="parseJson" class="btn btn-primary">JSON 파싱</button>
-    </section>
+            <div class="input-actions">
+              <button id="loadSample" class="btn-text">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                예시 불러오기
+              </button>
+              <button id="clearJson" class="btn-text">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                지우기
+              </button>
+            </div>
+          </div>
+          <button id="parseJson" class="btn btn-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            데이터 확인
+          </button>
+        </div>
+      </section>
 
-    <!-- 데이터 미리보기 -->
-    <section class="section" id="previewSection">
-      <h2>📝 입력할 데이터 미리보기</h2>
-      <div id="dataPreview" class="data-preview">
-        <p class="empty-state">데이터를 가져오거나 입력하세요</p>
-      </div>
-      <div class="preview-actions hidden" id="previewActions">
-        <button id="clearData" class="btn btn-secondary">전체 삭제</button>
-        <span id="dataCount" class="data-count">0개 항목</span>
-      </div>
-      <button id="captureDom" class="btn btn-secondary" style="margin-top: 8px; width: 100%;">
-        📥 현재 페이지 DOM 구조 캡처
-      </button>
-      <details style="margin-top: 8px;">
-        <summary>⚙️ 캡처 고급 옵션</summary>
-        <div class="capture-options">
-          <div class="form-group">
-            <label for="captureRoot">루트 선택자 (선택)</label>
-            <input type="text" id="captureRoot" placeholder="#uuid-cd">
+      <!-- 스텝 2: 미리보기 -->
+      <section class="card" id="previewCard">
+        <div class="card-header">
+          <span class="step-number">2</span>
+          <h2>미리보기</h2>
+          <span class="badge" id="dataCount">0개</span>
+        </div>
+        <div class="card-body">
+          <div id="dataPreview" class="preview-list">
+            <div class="empty-state">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+              <p>데이터를 입력하면 여기에 표시됩니다</p>
+            </div>
           </div>
-          <div class="form-group">
-            <label for="captureMaxDepth">최대 깊이</label>
-            <input type="number" id="captureMaxDepth" min="1" max="20" value="8">
+        </div>
+      </section>
+
+      <!-- 스텝 3: 실행 -->
+      <section class="card action-card">
+        <div class="card-header">
+          <span class="step-number">3</span>
+          <h2>자동 입력 실행</h2>
+        </div>
+        <div class="card-body">
+          <div class="speed-control">
+            <label>입력 속도</label>
+            <div class="speed-options">
+              <button class="speed-btn" data-speed="fast">빠르게</button>
+              <button class="speed-btn active" data-speed="normal">보통</button>
+              <button class="speed-btn" data-speed="slow">천천히</button>
+            </div>
           </div>
-          <div class="form-group">
-            <label for="captureMaxNodes">최대 노드 수</label>
-            <input type="number" id="captureMaxNodes" min="100" max="20000" step="100" value="4000">
+          <button id="startAutoFill" class="btn btn-primary btn-large" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            자동 입력 시작
+          </button>
+          <div class="progress-container hidden" id="progressContainer">
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">준비 중...</p>
           </div>
-          <div class="form-group">
-            <label for="captureTextLength">텍스트 최대 길이</label>
-            <input type="number" id="captureTextLength" min="20" max="2000" step="20" value="400">
+        </div>
+      </section>
+    </main>
+
+    <!-- 토스트 알림 -->
+    <div id="toast" class="toast hidden">
+      <span class="toast-icon"></span>
+      <span class="toast-message"></span>
+    </div>
+
+    <!-- 설정 모달 -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>설정</h3>
+          <button id="closeSettings" class="icon-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-group">
+            <label>웹사이트 URL</label>
+            <input type="text" id="websiteUrl" placeholder="https://www.iepon.site" />
           </div>
-          <div class="form-group inline-group" style="gap: 12px;">
+          <div class="setting-group">
+            <label>API 키 (선택)</label>
+            <input type="password" id="apiKey" placeholder="API Key" />
+          </div>
+          <div class="setting-group">
             <label class="checkbox-label">
-              <input type="checkbox" id="captureIncludeHidden" checked>
-              <span>숨김 요소 포함</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="captureIncludeAttributes" checked>
-              <span>속성 포함</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="captureIncludeLabel" checked>
-              <span>라벨 추출</span>
+              <input type="checkbox" id="humanMode" checked>
+              <span>사람처럼 입력하기 (감지 방지)</span>
             </label>
           </div>
         </div>
-      </details>
-    </section>
-
-    <!-- 실행 버튼 -->
-    <section class="section">
-      <button id="startAutoFill" class="btn btn-primary btn-large" disabled>
-        🚀 자동 입력 시작
-      </button>
-      <div class="progress-container hidden" id="progressContainer">
-        <div class="progress-bar">
-          <div class="progress-fill" id="progressFill"></div>
+        <div class="modal-footer">
+          <button id="saveSettings" class="btn btn-primary">저장</button>
         </div>
-        <p class="progress-text" id="progressText">0 / 0 완료</p>
       </div>
-    </section>
+    </div>
 
-    <!-- 로그 -->
-    <section class="section">
-      <details>
-        <summary>📋 실행 로그</summary>
-        <div id="logContainer" class="log-container">
-          <p class="log-empty">로그가 없습니다</p>
-        </div>
-      </details>
-    </section>
-
-    <!-- 푸터 -->
-    <footer class="footer">
-      <button id="openSettings" class="btn-link">⚙️ 설정</button>
-      <button id="openHelp" class="btn-link">📖 도움말</button>
-      <button id="openAbout" class="btn-link">ℹ️ 정보</button>
-    </footer>
+    <!-- 숨겨진 요소들 (기존 기능 유지용) -->
+    <div class="hidden-elements" style="display: none;">
+      <select id="studentSelect"></select>
+      <button id="loadStudents"></button>
+      <input type="text" id="studentName" />
+      <input type="text" id="year" />
+      <select id="semester"><option value="1">1</option><option value="2">2</option></select>
+      <select id="grade"></select>
+      <input type="text" id="className" />
+      <input type="text" id="studentNumber" />
+      <select id="inputType"></select>
+      <input type="text" id="subject" />
+      <button id="fetchData"></button>
+      <input type="text" id="manualMonth" />
+      <textarea id="manualGoal"></textarea>
+      <textarea id="manualContent"></textarea>
+      <textarea id="manualMethod"></textarea>
+      <textarea id="manualEvaluation"></textarea>
+      <button id="addManualData"></button>
+      <button id="clearData"></button>
+      <button id="testConnection"></button>
+      <button id="captureDom"></button>
+      <input type="text" id="captureRoot" />
+      <input type="number" id="captureMaxDepth" value="8" />
+      <input type="number" id="captureMaxNodes" value="4000" />
+      <input type="number" id="captureTextLength" value="400" />
+      <input type="checkbox" id="captureIncludeHidden" checked />
+      <input type="checkbox" id="captureIncludeAttributes" checked />
+      <input type="checkbox" id="captureIncludeLabel" checked />
+      <div id="logContainer"></div>
+      <div id="connectionStatus"></div>
+      <div id="statusIndicator"></div>
+    </div>
   </div>
 
   <script src="popup.js"></script>

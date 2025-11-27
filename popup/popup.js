@@ -2,23 +2,73 @@
 let state = {
   websiteUrl: '',
   apiKey: '',
-  inputMethod: 'website',
+  inputMethod: 'json',
   monthlyPlans: [],
   currentStudent: null,
   isProcessing: false,
-  filters: {}
+  filters: {},
+  speed: 'normal', // fast, normal, slow
+  humanMode: true,
+  mode: 'plan' // plan(월별계획) 또는 evaluation(월별평가)
 };
+
+// 속도 설정 (ms)
+const SPEED_CONFIG = {
+  fast: { typing: 10, between: 100, field: 150 },
+  normal: { typing: 30, between: 200, field: 300 },
+  slow: { typing: 80, between: 400, field: 600 }
+};
+
+// 샘플 데이터 - 월별계획 (3월~2월)
+const SAMPLE_PLAN_DATA = [
+  { month: "3", goal: "기초 학습 능력 형성", content: "학습 환경 적응 및 기본 규칙 익히기", method: "개별 지도 및 모델링", evaluation: "관찰 평가 및 체크리스트" },
+  { month: "4", goal: "의사소통 능력 향상", content: "일상생활 관련 어휘 확장", method: "그림카드 활용 언어 지도", evaluation: "수행 평가" },
+  { month: "5", goal: "사회성 기술 발달", content: "또래와 함께하는 활동 참여", method: "소그룹 협동 학습", evaluation: "행동 관찰 기록" },
+  { month: "6", goal: "자조 기술 향상", content: "개인 위생 관리 습관 형성", method: "단계별 시범 및 연습", evaluation: "일상생활 수행 체크" },
+  { month: "7", goal: "1학기 학습 정리", content: "학습 내용 복습 및 점검", method: "개별 피드백 제공", evaluation: "포트폴리오 평가" },
+  { month: "8", goal: "방학 중 기술 유지", content: "가정 연계 프로그램 제공", method: "가정통신문 및 과제", evaluation: "가정 연계 평가" },
+  { month: "9", goal: "2학기 학습 준비", content: "새 학기 적응 및 목표 설정", method: "개별 상담 및 목표 수립", evaluation: "면담 및 관찰" },
+  { month: "10", goal: "인지 능력 강화", content: "기본 개념 학습 심화", method: "구체물 조작 학습", evaluation: "형성 평가" },
+  { month: "11", goal: "표현력 향상", content: "자신의 생각과 감정 표현하기", method: "역할놀이 및 토의", evaluation: "발표 및 참여도 평가" },
+  { month: "12", goal: "2학기 학습 마무리", content: "학습 성취 점검 및 정리", method: "종합 복습 활동", evaluation: "총괄 평가" },
+  { month: "1", goal: "새해 목표 수립", content: "다음 학년 준비 활동", method: "개별 진로 상담", evaluation: "목표 달성도 평가" },
+  { month: "2", goal: "학년 전환 준비", content: "상급 학년 적응 프로그램", method: "전환 교육 실시", evaluation: "종합 발달 평가" }
+];
+
+// 샘플 데이터 - 월별평가 (8월~2월 2학기 기준)
+const SAMPLE_EVAL_DATA = [
+  { month: "8", eval_text: "방학 중 가정에서 기본 생활습관을 잘 유지하였으며, 가정 연계 활동에 성실히 참여함." },
+  { month: "9", eval_text: "2학기 새로운 학습 목표에 대한 이해도가 높으며, 학교생활 적응이 양호함." },
+  { month: "10", eval_text: "기본 개념 학습에 적극적으로 참여하였고, 구체물 조작 능력이 향상됨." },
+  { month: "11", eval_text: "자신의 생각과 감정을 표현하는 능력이 발전하였으며, 발표 활동에 자신감을 보임." },
+  { month: "12", eval_text: "2학기 학습 목표를 대부분 달성하였으며, 전반적인 성장이 관찰됨." },
+  { month: "1", eval_text: "새해 목표를 스스로 설정하였고, 상급 학년에 대한 기대감을 표현함." },
+  { month: "2", eval_text: "한 해 동안 전반적인 발달이 이루어졌으며, 상급 학년 전환 준비가 양호함." }
+];
+
+// 기존 호환성 유지
+const SAMPLE_DATA = SAMPLE_PLAN_DATA;
 
 // DOM 요소
 const elements = {
+  // 새 UI 요소
+  statusBadge: document.getElementById('statusBadge'),
+  statusText: document.getElementById('statusText'),
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsModal: document.getElementById('settingsModal'),
+  closeSettings: document.getElementById('closeSettings'),
+  toast: document.getElementById('toast'),
+  loadSample: document.getElementById('loadSample'),
+  clearJson: document.getElementById('clearJson'),
+  speedBtns: document.querySelectorAll('.speed-btn'),
+  humanMode: document.getElementById('humanMode'),
+  modeTabs: document.querySelectorAll('.mode-tab'),
+  
+  // 기존 요소
   websiteUrl: document.getElementById('websiteUrl'),
   apiKey: document.getElementById('apiKey'),
   testConnection: document.getElementById('testConnection'),
   saveSettings: document.getElementById('saveSettings'),
-  inputMethodRadios: document.querySelectorAll('input[name="inputMethod"]'),
-  websiteDataSection: document.getElementById('websiteDataSection'),
-  manualInputSection: document.getElementById('manualInputSection'),
-  jsonInputSection: document.getElementById('jsonInputSection'),
   studentSelect: document.getElementById('studentSelect'),
   loadStudents: document.getElementById('loadStudents'),
   studentName: document.getElementById('studentName'),
@@ -39,7 +89,6 @@ const elements = {
   jsonData: document.getElementById('jsonData'),
   parseJson: document.getElementById('parseJson'),
   dataPreview: document.getElementById('dataPreview'),
-  previewActions: document.getElementById('previewActions'),
   dataCount: document.getElementById('dataCount'),
   clearData: document.getElementById('clearData'),
   startAutoFill: document.getElementById('startAutoFill'),
@@ -47,9 +96,6 @@ const elements = {
   progressFill: document.getElementById('progressFill'),
   progressText: document.getElementById('progressText'),
   logContainer: document.getElementById('logContainer'),
-  statusIndicator: document.getElementById('statusIndicator'),
-  statusText: document.getElementById('statusText'),
-  connectionStatus: document.getElementById('connectionStatus'),
   captureDom: document.getElementById('captureDom'),
   captureRoot: document.getElementById('captureRoot'),
   captureMaxDepth: document.getElementById('captureMaxDepth'),
@@ -88,22 +134,42 @@ function collectCaptureOptions() {
 // 초기화
 async function init() {
   // 저장된 설정 불러오기
-  const settings = await chrome.storage.local.get(['websiteUrl', 'apiKey']);
-  if (settings.websiteUrl) {
-    elements.websiteUrl.value = settings.websiteUrl;
-    state.websiteUrl = settings.websiteUrl;
-  } else {
-    // 기본 URL 설정
+  try {
+    const settings = await chrome.storage.local.get(['websiteUrl', 'apiKey', 'speed', 'humanMode']);
+    
+    if (settings.websiteUrl) {
+      elements.websiteUrl.value = settings.websiteUrl;
+      state.websiteUrl = settings.websiteUrl;
+    } else {
+      elements.websiteUrl.value = 'https://www.iepon.site';
+      state.websiteUrl = 'https://www.iepon.site';
+    }
+    
+    if (settings.apiKey) {
+      elements.apiKey.value = settings.apiKey;
+      state.apiKey = settings.apiKey;
+    }
+    
+    if (settings.speed) {
+      state.speed = settings.speed;
+      updateSpeedButtons();
+    }
+    
+    if (settings.humanMode !== undefined) {
+      state.humanMode = settings.humanMode;
+      if (elements.humanMode) {
+        elements.humanMode.checked = state.humanMode;
+      }
+    }
+  } catch (e) {
+    console.log('[테스트 모드] Chrome Storage API 없음');
     elements.websiteUrl.value = 'https://www.iepon.site';
     state.websiteUrl = 'https://www.iepon.site';
   }
-  if (settings.apiKey) {
-    elements.apiKey.value = settings.apiKey;
-    state.apiKey = settings.apiKey;
-  }
+  
   // 현재 학년도 설정
   const currentYear = new Date().getFullYear();
-  elements.year.value = currentYear;
+  if (elements.year) elements.year.value = currentYear;
 
   // 이벤트 리스너 등록
   registerEventListeners();
@@ -114,37 +180,191 @@ async function init() {
   addLog('확장 프로그램이 시작되었습니다', 'info');
 }
 
+// 속도 버튼 상태 업데이트
+function updateSpeedButtons() {
+  elements.speedBtns.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.speed === state.speed);
+  });
+}
+
+// 모드 UI 업데이트
+function updateModeUI() {
+  // 탭 활성화 상태 업데이트
+  elements.modeTabs.forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.mode === state.mode);
+  });
+  
+  // placeholder 텍스트 변경
+  if (state.mode === 'plan') {
+    elements.jsonData.placeholder = `JSON 데이터를 붙여넣으세요
+
+예시:
+[
+  {
+    "month": "3",
+    "goal": "읽기 능력 향상",
+    "content": "그림책 읽기",
+    "method": "1:1 지도",
+    "evaluation": "수행평가"
+  }
+]`;
+  } else {
+    elements.jsonData.placeholder = `JSON 데이터를 붙여넣으세요
+
+예시:
+[
+  {
+    "month": "8",
+    "eval_text": "목표를 달성하였으며 전반적인 성장이 관찰됨"
+  }
+]`;
+  }
+}
+
 // 이벤트 리스너 등록
 function registerEventListeners() {
-  // 설정 저장
-  elements.saveSettings.addEventListener('click', saveSettings);
-  elements.testConnection.addEventListener('click', testConnection);
-
-  // 입력 방식 변경
-  elements.inputMethodRadios.forEach(radio => {
-    radio.addEventListener('change', handleInputMethodChange);
+  // 모드 탭 이벤트
+  elements.modeTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const newMode = tab.dataset.mode;
+      if (newMode !== state.mode) {
+        state.mode = newMode;
+        updateModeUI();
+        // 데이터 초기화
+        state.monthlyPlans = [];
+        renderDataPreview();
+        elements.jsonData.value = '';
+        showToast(newMode === 'plan' ? '월별계획 모드' : '월별평가 모드', 'info');
+      }
+    });
   });
 
+  // 새 UI 이벤트
+  if (elements.settingsBtn) {
+    elements.settingsBtn.addEventListener('click', () => {
+      elements.settingsModal.classList.remove('hidden');
+    });
+  }
+  
+  if (elements.closeSettings) {
+    elements.closeSettings.addEventListener('click', () => {
+      elements.settingsModal.classList.add('hidden');
+    });
+  }
+  
+  // 모달 백드롭 클릭으로 닫기
+  const backdrop = document.querySelector('.modal-backdrop');
+  if (backdrop) {
+    backdrop.addEventListener('click', () => {
+      elements.settingsModal.classList.add('hidden');
+    });
+  }
+  
+  // 샘플 데이터 불러오기
+  if (elements.loadSample) {
+    elements.loadSample.addEventListener('click', loadSampleData);
+  }
+  
+  // JSON 지우기
+  if (elements.clearJson) {
+    elements.clearJson.addEventListener('click', () => {
+      elements.jsonData.value = '';
+      elements.jsonData.focus();
+    });
+  }
+  
+  // 속도 선택
+  elements.speedBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.speed = btn.dataset.speed;
+      updateSpeedButtons();
+      chrome.storage.local.set({ speed: state.speed });
+      showToast(`입력 속도: ${getSpeedLabel(state.speed)}`);
+    });
+  });
+  
+  // 사람모드 설정
+  if (elements.humanMode) {
+    elements.humanMode.addEventListener('change', (e) => {
+      state.humanMode = e.target.checked;
+      chrome.storage.local.set({ humanMode: state.humanMode });
+    });
+  }
+  
+  // 설정 저장
+  if (elements.saveSettings) {
+    elements.saveSettings.addEventListener('click', saveSettings);
+  }
+  
+  if (elements.testConnection) {
+    elements.testConnection.addEventListener('click', testConnection);
+  }
+
   // 웹사이트 연동
-  elements.loadStudents.addEventListener('click', loadStudents);
-  elements.fetchData.addEventListener('click', fetchDataFromWebsite);
-  elements.studentSelect.addEventListener('change', handleStudentSelection);
+  if (elements.loadStudents) {
+    elements.loadStudents.addEventListener('click', loadStudents);
+  }
+  
+  if (elements.fetchData) {
+    elements.fetchData.addEventListener('click', fetchDataFromWebsite);
+  }
+  
+  if (elements.studentSelect) {
+    elements.studentSelect.addEventListener('change', handleStudentSelection);
+  }
 
   // 수동 입력
-  elements.addManualData.addEventListener('click', addManualData);
+  if (elements.addManualData) {
+    elements.addManualData.addEventListener('click', addManualData);
+  }
 
   // JSON 입력
-  elements.parseJson.addEventListener('click', parseJsonData);
+  if (elements.parseJson) {
+    elements.parseJson.addEventListener('click', parseJsonData);
+  }
 
   // 데이터 관리
-  elements.clearData.addEventListener('click', clearAllData);
+  if (elements.clearData) {
+    elements.clearData.addEventListener('click', clearAllData);
+  }
 
   // 자동 입력 시작
-  elements.startAutoFill.addEventListener('click', startAutoFill);
+  if (elements.startAutoFill) {
+    elements.startAutoFill.addEventListener('click', startAutoFill);
+  }
 
   if (elements.captureDom) {
     elements.captureDom.addEventListener('click', captureDomStructure);
   }
+}
+
+// 샘플 데이터 불러오기
+function loadSampleData() {
+  const sampleData = state.mode === 'plan' ? SAMPLE_PLAN_DATA : SAMPLE_EVAL_DATA;
+  elements.jsonData.value = JSON.stringify(sampleData, null, 2);
+  showToast(`${state.mode === 'plan' ? '월별계획' : '월별평가'} 예시 데이터를 불러왔습니다`, 'success');
+}
+
+// 속도 라벨
+function getSpeedLabel(speed) {
+  const labels = { fast: '빠르게', normal: '보통', slow: '천천히' };
+  return labels[speed] || '보통';
+}
+
+// 토스트 알림
+function showToast(message, type = 'info') {
+  const toast = elements.toast;
+  if (!toast) return;
+  
+  toast.className = `toast ${type}`;
+  toast.querySelector('.toast-message').textContent = message;
+  toast.classList.add('show');
+  toast.classList.remove('hidden');
+  
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.classList.add('hidden'), 300);
+  }, 2500);
 }
 
 // 설정 저장
@@ -152,16 +372,16 @@ async function saveSettings() {
   const websiteUrl = elements.websiteUrl.value.trim();
   const apiKey = elements.apiKey.value.trim();
 
-  if (!websiteUrl) {
-    showNotification('웹사이트 URL을 입력하세요', 'error');
-    return;
-  }
-
   await chrome.storage.local.set({ websiteUrl, apiKey });
   state.websiteUrl = websiteUrl;
   state.apiKey = apiKey;
 
-  showNotification('설정이 저장되었습니다', 'success');
+  // 모달 닫기
+  if (elements.settingsModal) {
+    elements.settingsModal.classList.add('hidden');
+  }
+
+  showToast('설정이 저장되었습니다', 'success');
   addLog('설정 저장 완료', 'success');
 }
 
@@ -200,32 +420,17 @@ async function testConnection() {
 
 // 연결 상태 업데이트
 function updateConnectionStatus(status, text) {
-  elements.statusIndicator.className = `status-indicator ${status}`;
-  elements.statusText.textContent = text;
+  if (elements.statusBadge) {
+    elements.statusBadge.className = `status-badge ${status}`;
+  }
+  if (elements.statusText) {
+    elements.statusText.textContent = text;
+  }
 }
 
-// 입력 방식 변경
+// 입력 방식 변경 (레거시 호환용)
 function handleInputMethodChange(e) {
   state.inputMethod = e.target.value;
-
-  // 모든 섹션 숨기기
-  elements.websiteDataSection.classList.add('hidden');
-  elements.manualInputSection.classList.add('hidden');
-  elements.jsonInputSection.classList.add('hidden');
-
-  // 선택된 섹션만 표시
-  switch (state.inputMethod) {
-    case 'website':
-      elements.websiteDataSection.classList.remove('hidden');
-      break;
-    case 'manual':
-      elements.manualInputSection.classList.remove('hidden');
-      break;
-    case 'json':
-      elements.jsonInputSection.classList.remove('hidden');
-      break;
-  }
-
   addLog(`입력 방식 변경: ${state.inputMethod}`, 'info');
 }
 
@@ -395,13 +600,22 @@ function parseJsonData() {
     }
 
     // 필드명 정규화 (다양한 필드명 지원)
-    state.monthlyPlans = plans.map(plan => ({
-      month: plan.month || plan.mmnt || plan.월,
-      goal: plan.goal || plan.educationGoals || plan.교육목표 || '',
-      content: plan.content || plan.educationContent || plan.교육내용 || '',
-      method: plan.method || plan.educationMethod || plan.교육방법 || '',
-      evaluation: plan.evaluation || plan.evaluationPlan || plan.평가계획 || ''
-    }));
+    if (state.mode === 'plan') {
+      // 월별계획 모드
+      state.monthlyPlans = plans.map(plan => ({
+        month: plan.month || plan.mmnt || plan.월,
+        goal: plan.goal || plan.educationGoals || plan.교육목표 || '',
+        content: plan.content || plan.educationContent || plan.교육내용 || '',
+        method: plan.method || plan.educationMethod || plan.교육방법 || '',
+        evaluation: plan.evaluation || plan.evaluationPlan || plan.평가계획 || ''
+      }));
+    } else {
+      // 월별평가 모드
+      state.monthlyPlans = plans.map(plan => ({
+        month: plan.month || plan.mmnt || plan.월,
+        eval_text: plan.eval_text || plan.evaluation || plan.평가 || plan.평가내용 || ''
+      }));
+    }
 
     renderDataPreview();
 
@@ -417,22 +631,53 @@ function parseJsonData() {
 // 데이터 미리보기 렌더링
 function renderDataPreview() {
   if (state.monthlyPlans.length === 0) {
-    elements.dataPreview.innerHTML = '<p class="empty-state">데이터를 가져오거나 입력하세요</p>';
-    elements.previewActions.classList.add('hidden');
+    elements.dataPreview.innerHTML = `
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+        <p>데이터를 입력하면 여기에 표시됩니다</p>
+      </div>
+    `;
+    elements.dataCount.textContent = '0개';
+    elements.dataCount.classList.remove('active');
     elements.startAutoFill.disabled = true;
     return;
   }
 
-  elements.dataPreview.innerHTML = state.monthlyPlans.map((plan, index) => `
-    <div class="preview-item">
-      <button class="preview-remove" data-index="${index}">×</button>
-      <div class="preview-month">📅 ${plan.month}월</div>
-      ${plan.goal ? `<div class="preview-field"><strong>목표:</strong> ${truncate(plan.goal, 50)}</div>` : ''}
-      ${plan.content ? `<div class="preview-field"><strong>내용:</strong> ${truncate(plan.content, 50)}</div>` : ''}
-      ${plan.method ? `<div class="preview-field"><strong>방법:</strong> ${truncate(plan.method, 50)}</div>` : ''}
-      ${plan.evaluation ? `<div class="preview-field"><strong>평가:</strong> ${truncate(plan.evaluation, 50)}</div>` : ''}
-    </div>
-  `).join('');
+  if (state.mode === 'plan') {
+    // 월별계획 모드 미리보기
+    elements.dataPreview.innerHTML = state.monthlyPlans.map((plan, index) => `
+      <div class="preview-item">
+        <button class="preview-remove" data-index="${index}">×</button>
+        <div class="preview-month">
+          ${plan.month}
+          <small>월</small>
+        </div>
+        <div class="preview-content">
+          ${plan.goal ? `<div class="preview-field"><strong>목표:</strong> ${truncate(plan.goal, 35)}</div>` : ''}
+          ${plan.content ? `<div class="preview-field"><strong>내용:</strong> ${truncate(plan.content, 35)}</div>` : ''}
+          ${plan.method ? `<div class="preview-field"><strong>방법:</strong> ${truncate(plan.method, 35)}</div>` : ''}
+          ${plan.evaluation ? `<div class="preview-field"><strong>평가:</strong> ${truncate(plan.evaluation, 35)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } else {
+    // 월별평가 모드 미리보기
+    elements.dataPreview.innerHTML = state.monthlyPlans.map((plan, index) => `
+      <div class="preview-item preview-eval">
+        <button class="preview-remove" data-index="${index}">×</button>
+        <div class="preview-month">
+          ${plan.month}
+          <small>월</small>
+        </div>
+        <div class="preview-content">
+          <div class="preview-field"><strong>평가:</strong> ${truncate(plan.eval_text, 60)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
 
   // 삭제 버튼 이벤트 리스너
   elements.dataPreview.querySelectorAll('.preview-remove').forEach(btn => {
@@ -442,8 +687,8 @@ function renderDataPreview() {
     });
   });
 
-  elements.previewActions.classList.remove('hidden');
-  elements.dataCount.textContent = `${state.monthlyPlans.length}개 항목`;
+  elements.dataCount.textContent = `${state.monthlyPlans.length}개`;
+  elements.dataCount.classList.add('active');
   elements.startAutoFill.disabled = false;
 }
 
@@ -499,11 +744,18 @@ async function startAutoFill() {
     const payload = {
       filters,
       studentName: filters.studentName || state.currentStudent?.name || '',
-      plans: state.monthlyPlans
+      plans: state.monthlyPlans,
+      speed: state.speed,
+      humanMode: state.humanMode,
+      mode: state.mode
     };
 
-    console.log('[나이스 자동입력] 전송할 데이터:', payload);
-    addLog(`${state.monthlyPlans.length}개 항목 전송 준비 완료`, 'info');
+    // 모드에 따라 action 결정
+    const action = state.mode === 'plan' ? 'fillMonthlyPlans' : 'fillMonthlyEvaluations';
+    const modeLabel = state.mode === 'plan' ? '월별계획' : '월별평가';
+
+    console.log(`[나이스 자동입력] ${modeLabel} 전송할 데이터:`, payload);
+    addLog(`${state.monthlyPlans.length}개 ${modeLabel} 항목 전송 준비 완료`, 'info');
 
     // 1. 먼저 NICE 탭 활성화
     addLog('나이스 웹을 활성화 중...', 'info');
@@ -516,7 +768,7 @@ async function startAutoFill() {
       
       // 메시지 전송 시도
       chrome.tabs.sendMessage(tab.id, {
-        action: 'fillMonthlyPlans',
+        action: action,
         data: payload
       }).catch(async (err) => {
         console.error('[나이스 자동입력] 메시지 전송 오류:', err);
@@ -530,7 +782,7 @@ async function startAutoFill() {
           
           // 재시도
           chrome.tabs.sendMessage(tab.id, {
-            action: 'fillMonthlyPlans',
+            action: action,
             data: payload
           });
         }
@@ -669,7 +921,8 @@ async function checkNicePage() {
       addLog('나이스 페이지로 이동하세요', 'info');
     }
   } catch (error) {
-    addLog('페이지 확인 실패', 'error');
+    updateConnectionStatus('', '테스트 모드');
+    console.log('[테스트 모드] Chrome Tabs API 없음');
   }
 }
 
@@ -695,7 +948,7 @@ function addLog(message, type = 'info') {
 
 // 알림 표시
 function showNotification(message, type = 'info') {
-  // 간단한 알림 (추후 토스트 UI로 개선 가능)
+  showToast(message, type);
   addLog(message, type);
 }
 
@@ -706,12 +959,16 @@ function truncate(text, length) {
 }
 
 // Content Script로부터 메시지 수신
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'progress') {
-    updateProgress(message.current, message.total);
-    addLog(`진행 중: ${message.current}/${message.total}`, 'info');
-  }
-});
+try {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'progress') {
+      updateProgress(message.current, message.total);
+      addLog(`진행 중: ${message.current}/${message.total}`, 'info');
+    }
+  });
+} catch (e) {
+  console.log('[테스트 모드] Chrome API 없음');
+}
 
 function collectFilters() {
   const text = el => (el ? el.value.trim() : '');
@@ -758,34 +1015,6 @@ function handleStudentSelection() {
   }
 }
 
-// 고급 설정 토글
-const toggleAdvancedBtn = document.getElementById('toggleAdvanced');
-if (toggleAdvancedBtn) {
-  toggleAdvancedBtn.addEventListener('click', () => {
-    const advancedSections = [
-      document.getElementById('connectionStatus'),
-      document.getElementById('websiteConnectionSection'),
-      document.getElementById('inputMethodSection'),
-      document.getElementById('websiteDataSection'),
-      document.getElementById('manualInputSection')
-    ];
-    
-    const isHidden = advancedSections[0].classList.contains('hidden');
-    
-    advancedSections.forEach(section => {
-      if (section) {
-        if (isHidden) {
-          section.classList.remove('hidden');
-        } else {
-          section.classList.add('hidden');
-        }
-      }
-    });
-    
-    toggleAdvancedBtn.textContent = isHidden ? '⚙️ 고급 설정 숨기기' : '⚙️ 고급 설정 보기';
-    addLog(isHidden ? '고급 설정 활성화' : '고급 설정 비활성화', 'info');
-  });
-}
 
 // 초기화 실행
 init();
