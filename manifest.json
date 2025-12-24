@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "나이스 월별계획 입력 도우미",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "개별화교육계획(IEP) 월별 계획 및 평가 데이터 입력을 도와주는 업무 편의 도구입니다",
   "permissions": [
     "activeTab",
@@ -14,10 +14,17 @@
     "https://*.vercel.app/*"
   ],
   "action": {
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/logo.png",
+      "48": "icons/logo.png",
+      "128": "icons/logo.png"
+    }
   },
   "icons": {
-    "128": "icons/logo.svg"
+    "16": "icons/logo.png",
+    "48": "icons/logo.png",
+    "128": "icons/logo.png"
   },
   "content_scripts": [
     {
