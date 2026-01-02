@@ -99,48 +99,41 @@ body {
   background: var(--success);
 }
 
-/* 모드 탭 */
-.mode-tabs {
-  display: flex;
+/* 데이터 유형 표시 (간소화) */
+.data-type-indicator {
   background: white;
   border-bottom: 1px solid var(--gray-200);
-  padding: 0 8px;
-}
-
-.mode-tab {
-  flex: 1;
+  padding: 10px 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 12px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  gap: 8px;
+}
+
+.indicator-label {
+  font-size: 12px;
   color: var(--gray-500);
+}
+
+.indicator-value {
   font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 16px;
+  background: var(--gray-100);
+  color: var(--gray-500);
 }
 
-.mode-tab:hover {
-  color: var(--gray-700);
-  background: var(--gray-50);
+.indicator-value.plan {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
-.mode-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+.indicator-value.evaluation {
+  background: #dcfce7;
+  color: #15803d;
 }
 
-.mode-tab svg {
-  opacity: 0.7;
-}
-
-.mode-tab.active svg {
-  opacity: 1;
-}
 
 .status-badge.error .status-dot {
   background: var(--error);
@@ -168,6 +161,52 @@ body {
 .icon-btn:hover {
   background: var(--gray-200);
   color: var(--gray-800);
+}
+
+/* 모드 선택 탭 */
+.mode-tabs {
+  background: white;
+  border-bottom: 1px solid var(--gray-200);
+  padding: 0 16px;
+  display: flex;
+  gap: 4px;
+}
+
+.mode-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  color: var(--gray-500);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.mode-tab svg {
+  flex-shrink: 0;
+}
+
+.mode-tab:hover {
+  color: var(--gray-700);
+  background: var(--gray-50);
+}
+
+.mode-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+.mode-tab.active svg {
+  stroke: var(--primary);
 }
 
 /* 메인 컨텐츠 */
@@ -435,6 +474,29 @@ body {
 .preview-remove:hover {
   background: var(--error);
   color: white;
+}
+
+/* 그룹화된 월 미리보기 */
+.preview-grouped {
+  background: linear-gradient(135deg, var(--gray-50) 0%, #ede9fe 100%);
+  border-left: 3px solid var(--primary);
+}
+
+.preview-grouped .preview-month {
+  width: 52px;
+  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+  font-size: 12px;
+}
+
+.group-badge {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
 }
 
 /* 속도 선택 */

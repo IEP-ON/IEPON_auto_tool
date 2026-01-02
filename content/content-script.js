@@ -3,8 +3,8 @@
  * Bridge 메시지를 통해 페이지 컨텍스트와 통신
  */
 
-const BRIDGE_REQUEST = 'NICE_BRIDGE_REQUEST';
-const BRIDGE_RESPONSE = 'NICE_BRIDGE_RESPONSE';
+const BRIDGE_REQUEST = 'NICE_BRIDGE_DOM_REQUEST';
+const BRIDGE_RESPONSE = 'NICE_BRIDGE_DOM_RESPONSE';
 
 const DEFAULT_SNAPSHOT_OPTIONS = {
   maxDepth: 8,
@@ -293,11 +293,17 @@ class NiceAutoFiller {
     await this.bridge.send('addRow');
   }
 
-  async selectMonth(month, rowIndex = null) {
-    await this.bridge.send('selectMonth', {
-      month,
-      rowIndex
-    });
+  async selectMonth(monthOrMonths, rowIndex = null) {
+    // 단일 month 또는 months 배열 모두 지원
+    const payload = { rowIndex };
+    
+    if (Array.isArray(monthOrMonths)) {
+      payload.months = monthOrMonths;
+    } else if (monthOrMonths) {
+      payload.month = monthOrMonths;
+    }
+    
+    await this.bridge.send('selectMonth', payload);
   }
 
   async setFields(plan, rowIndex = null, config = {}) {
@@ -315,9 +321,23 @@ class NiceAutoFiller {
     await this.bridge.send('save');
   }
 
-  // 평가 페이지에서 특정 월 행 선택
-  async selectRowByMonth(month, config = {}) {
-    await this.bridge.send('selectRowByMonth', { month, config });
+  // 평가 페이지에서 특정 월 행 선택 (다중 월 지원) - 기존 방식 (사용 안함)
+  async selectRowByMonth(monthOrMonths, config = {}, isFirst = false) {
+    const payload = { config, isFirst };
+    
+    // 다중 월 배열 또는 단일 월 모두 지원
+    if (Array.isArray(monthOrMonths)) {
+      payload.months = monthOrMonths;
+    } else if (monthOrMonths) {
+      payload.month = monthOrMonths;
+    }
+    
+    await this.bridge.send('selectRowByMonth', payload);
+  }
+
+  // 순번 기반 행 선택 (월별평가용) - 새로운 방식
+  async selectRowByIndex(index, config = {}, isFirst = false) {
+    await this.bridge.send('selectRowByIndex', { index, config, isFirst });
   }
 
   // 평가 텍스트 입력
@@ -325,13 +345,14 @@ class NiceAutoFiller {
     await this.bridge.send('setEvalText', { eval_text: evalText, config });
   }
 
-  // 단일 월 평가 입력
-  async fillMonthlyEvalSimple(plan, config = {}) {
+  // 월별 평가 입력 (순번 기반 - 개선된 방식)
+  async fillMonthlyEvalSimple(plan, config = {}, index = 0, isFirst = false) {
     try {
-      // 해당 월 행 선택
-      if (plan.month) {
-        await this.selectRowByMonth(plan.month, config);
-      }
+      // 순번 기반으로 행 선택 (index = 0, 1, 2, ... → 순번 1, 2, 3, ...)
+      const monthInfo = plan.months ? plan.months.join('-') : plan.month;
+      console.log(`[나이스 자동입력] 순번 ${index + 1}번 (${monthInfo}월) 평가 입력 중...${isFirst ? ' (첫 항목)' : ''}`);
+      
+      await this.selectRowByIndex(index, config, isFirst);
 
       // 평가 텍스트 입력
       if (plan.eval_text) {
@@ -340,7 +361,7 @@ class NiceAutoFiller {
 
       return { success: true };
     } catch (error) {
-      console.error('[나이스 자동입력] 단일 월 평가 입력 실패:', error);
+      console.error('[나이스 자동입력] 월별 평가 입력 실패:', error);
       return { success: false, error: error.message };
     }
   }
@@ -352,8 +373,28 @@ class NiceAutoFiller {
         throw new Error('입력할 평가 데이터가 없습니다');
       }
 
+      // 데이터를 학년도 순서(3월~2월)로 정렬 - 그리드 순서와 맞추기 위해
+      const sortedPlans = [...payload.plans].sort((a, b) => {
+        // 첫 번째 월을 기준으로 정렬 (그룹화된 경우 months[0] 사용)
+        const getFirstMonth = (plan) => {
+          if (plan.months && Array.isArray(plan.months) && plan.months.length > 0) {
+            return parseInt(String(plan.months[0]).replace(/[^0-9]/g, ''));
+          }
+          return parseInt(String(plan.month || '0').replace(/[^0-9]/g, ''));
+        };
+        
+        const aMonth = getFirstMonth(a);
+        const bMonth = getFirstMonth(b);
+        
+        // 학년도 순서: 3, 4, 5, ... 12, 1, 2
+        const aValue = (aMonth === 1 || aMonth === 2) ? aMonth + 12 : aMonth;
+        const bValue = (bMonth === 1 || bMonth === 2) ? bMonth + 12 : bMonth;
+        
+        return aValue - bValue;
+      });
+
       const results = [];
-      const total = payload.plans.length;
+      const total = sortedPlans.length;
       
       // 입력 설정 추출
       const config = {
@@ -362,6 +403,7 @@ class NiceAutoFiller {
       };
 
       console.log(`[나이스 자동입력] 평가 일괄 입력 시작: ${total}개 항목`);
+      console.log(`[나이스 자동입력] 정렬된 월 순서:`, sortedPlans.map(p => p.months || p.month).join(' → '));
       console.log(`[나이스 자동입력] 설정: 속도=${config.speed}, 휴먼모드=${config.humanMode}`);
       
       // 팝업이 닫힐 시간을 충분히 줌
@@ -373,7 +415,8 @@ class NiceAutoFiller {
       await this.wait(150);
 
       for (let i = 0; i < total; i++) {
-        const data = payload.plans[i];
+        const data = sortedPlans[i];
+        const isFirst = (i === 0); // 첫 번째 항목 여부
         
         try {
           // 진행 상황 전송
@@ -383,8 +426,8 @@ class NiceAutoFiller {
             total: total
           });
 
-          // 월별 평가 입력
-          const result = await this.fillMonthlyEvalSimple(data, config);
+          // 월별 평가 입력 (순번 기반: i = 0, 1, 2 → 순번 1, 2, 3)
+          const result = await this.fillMonthlyEvalSimple(data, config, i, isFirst);
           results.push(result);
 
           // 각 입력 사이 간격
@@ -434,14 +477,20 @@ class NiceAutoFiller {
     try {
       await this.addRow();
 
-      if (plan.month) {
+      // months 배열 또는 단일 month 모두 처리
+      if (plan.months && Array.isArray(plan.months) && plan.months.length > 0) {
+        const monthsStr = plan.months.join(', ');
+        console.log(`[나이스 자동입력] 그룹 월(${monthsStr}) 계획 입력 중...`);
+        await this.selectMonth(plan.months);
+      } else if (plan.month) {
+        console.log(`[나이스 자동입력] 단일 월(${plan.month}) 계획 입력 중...`);
         await this.selectMonth(plan.month);
       }
 
       await this.setFields(plan, null, config);
       return { success: true };
     } catch (error) {
-      console.error('[나이스 자동입력] 단일 월 입력 실패:', error);
+      console.error('[나이스 자동입력] 월별 계획 입력 실패:', error);
       return { success: false, error: error.message };
     }
   }
@@ -630,6 +679,29 @@ async function initialize() {
 })();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // 페이지 유형 감지 요청
+  if (message.action === 'getPageType') {
+    (async () => {
+      try {
+        console.log('[나이스 자동입력] getPageType 메시지 받음');
+        
+        const result = await bridgeRequest('detectPageType', {});
+        
+        if (result && result.pageType) {
+          console.log(`[나이스 자동입력] 페이지 유형: ${result.pageType}`);
+          sendResponse({ success: true, pageType: result.pageType });
+        } else {
+          sendResponse({ success: false, pageType: null });
+        }
+      } catch (error) {
+        console.error('[나이스 자동입력] 페이지 유형 감지 오류:', error);
+        sendResponse({ success: false, pageType: null, error: error.message });
+      }
+    })();
+    
+    return true;
+  }
+
   if (message.action === 'fillMonthlyPlans') {
     (async () => {
       try {
@@ -765,3 +837,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 console.log('[나이스 자동입력] Content Script 준비 완료');
+
+// 페이지 로드 완료 후 초기화 실행
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initialize);
+} else {
+  // 이미 로드되었으면 바로 실행
+  initialize();
+}

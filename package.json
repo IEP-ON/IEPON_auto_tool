@@ -1,0 +1,15 @@
+{
+  "name": "iepon_auto_tool-main",
+  "version": "1.0.0",
+  "description": "선생님의 업무 효율을 높여드립니다!",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.57.0"
+  }
+}

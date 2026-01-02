@@ -9,7 +9,8 @@ let state = {
   filters: {},
   speed: 'normal', // fast, normal, slow
   humanMode: true,
-  mode: 'plan' // plan(월별계획) 또는 evaluation(월별평가)
+  mode: 'plan', // plan(월별계획) 또는 evaluation(월별평가) - 데이터로 자동 감지
+  detectedDataType: null  // plan, evaluation, null (감지된 데이터 유형)
 };
 
 // 속도 설정 (ms)
@@ -62,7 +63,8 @@ const elements = {
   clearJson: document.getElementById('clearJson'),
   speedBtns: document.querySelectorAll('.speed-btn'),
   humanMode: document.getElementById('humanMode'),
-  modeTabs: document.querySelectorAll('.mode-tab'),
+  // 데이터 유형 표시 요소
+  dataTypeValue: document.getElementById('dataTypeValue'),
   
   // 기존 요소
   websiteUrl: document.getElementById('websiteUrl'),
@@ -174,7 +176,10 @@ async function init() {
   // 이벤트 리스너 등록
   registerEventListeners();
 
-  // 나이스 페이지 확인
+  // 감지 상태 UI 초기화
+  updateDataTypeUI();
+
+  // 나이스 페이지 확인 (페이지 유형 자동 감지)
   checkNicePage();
 
   addLog('확장 프로그램이 시작되었습니다', 'info');
@@ -187,58 +192,58 @@ function updateSpeedButtons() {
   });
 }
 
-// 모드 UI 업데이트
-function updateModeUI() {
-  // 탭 활성화 상태 업데이트
-  elements.modeTabs.forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.mode === state.mode);
-  });
+// 데이터 유형 UI 업데이트 (간소화)
+function updateDataTypeUI() {
+  if (elements.dataTypeValue) {
+    if (state.detectedDataType === 'plan') {
+      elements.dataTypeValue.textContent = '📋 월별계획';
+      elements.dataTypeValue.className = 'indicator-value plan';
+    } else if (state.detectedDataType === 'evaluation') {
+      elements.dataTypeValue.textContent = '✅ 월별평가';
+      elements.dataTypeValue.className = 'indicator-value evaluation';
+    } else {
+      elements.dataTypeValue.textContent = '대기 중';
+      elements.dataTypeValue.className = 'indicator-value';
+    }
+  }
+}
+
+// JSON 데이터로부터 모드 자동 감지
+function detectModeFromData(dataArray) {
+  if (!Array.isArray(dataArray) || dataArray.length === 0) {
+    return null;
+  }
   
-  // placeholder 텍스트 변경
-  if (state.mode === 'plan') {
-    elements.jsonData.placeholder = `JSON 데이터를 붙여넣으세요
-
-예시:
-[
-  {
-    "month": "3",
-    "goal": "읽기 능력 향상",
-    "content": "그림책 읽기",
-    "method": "1:1 지도",
-    "evaluation": "수행평가"
+  const firstItem = dataArray[0];
+  
+  // 월별계획 필드 체크 (goal, content, method, evaluation 등)
+  const planFields = ['goal', 'goals', 'educationGoals', 'education_goal', '교육목표',
+                      'content', 'contents', 'educationContent', '교육내용',
+                      'method', 'methods', 'educationMethod', '교육방법'];
+  
+  // 월별평가 필드 체크 (eval_text, refinedText, rawText 등)
+  const evalFields = ['eval_text', 'evalText', 'refinedText', 'refined_text',
+                      'rawText', 'raw_text', '평가', '평가내용', '월별평가',
+                      'finalContent', 'teacherContent'];
+  
+  const hasPlanField = planFields.some(field => firstItem[field] !== undefined);
+  const hasEvalField = evalFields.some(field => firstItem[field] !== undefined);
+  
+  // 평가 필드만 있고 계획 필드가 없으면 평가 모드
+  if (hasEvalField && !hasPlanField) {
+    return 'evaluation';
   }
-]`;
-  } else {
-    elements.jsonData.placeholder = `JSON 데이터를 붙여넣으세요
-
-예시:
-[
-  {
-    "month": "8",
-    "eval_text": "목표를 달성하였으며 전반적인 성장이 관찰됨"
+  
+  // 계획 필드가 있으면 계획 모드
+  if (hasPlanField) {
+    return 'plan';
   }
-]`;
-  }
+  
+  return null;
 }
 
 // 이벤트 리스너 등록
 function registerEventListeners() {
-  // 모드 탭 이벤트
-  elements.modeTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const newMode = tab.dataset.mode;
-      if (newMode !== state.mode) {
-        state.mode = newMode;
-        updateModeUI();
-        // 데이터 초기화
-        state.monthlyPlans = [];
-        renderDataPreview();
-        elements.jsonData.value = '';
-        showToast(newMode === 'plan' ? '월별계획 모드' : '월별평가 모드', 'info');
-      }
-    });
-  });
-
   // 새 UI 이벤트
   if (elements.settingsBtn) {
     elements.settingsBtn.addEventListener('click', () => {
@@ -272,6 +277,29 @@ function registerEventListeners() {
       elements.jsonData.focus();
     });
   }
+  
+  // 모드 탭 전환
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const mode = tab.dataset.mode;
+      
+      // 모든 탭에서 active 클래스 제거
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      
+      // 클릭한 탭에 active 클래스 추가
+      tab.classList.add('active');
+      
+      // 상태 업데이트
+      state.mode = mode;
+      
+      // 샘플 데이터 변경 (탭에 맞는 샘플)
+      if (mode === 'evaluation') {
+        showToast('월별평가 모드로 전환되었습니다', 'info');
+      } else {
+        showToast('월별계획 모드로 전환되었습니다', 'info');
+      }
+    });
+  });
   
   // 속도 선택
   elements.speedBtns.forEach(btn => {
@@ -338,9 +366,15 @@ function registerEventListeners() {
   }
 }
 
-// 샘플 데이터 불러오기
+// 샘플 데이터 불러오기 (현재 모드에 맞게)
 function loadSampleData() {
+  // 현재 모드에 맞게 샘플 데이터 선택
   const sampleData = state.mode === 'plan' ? SAMPLE_PLAN_DATA : SAMPLE_EVAL_DATA;
+  
+  // 상태 업데이트
+  state.detectedDataType = state.mode;
+  updateDataTypeUI();
+  
   elements.jsonData.value = JSON.stringify(sampleData, null, 2);
   showToast(`${state.mode === 'plan' ? '월별계획' : '월별평가'} 예시 데이터를 불러왔습니다`, 'success');
 }
@@ -557,6 +591,30 @@ function addManualData() {
   addLog(`수동 데이터 추가: ${month}월`, 'success');
 }
 
+// 필드값 추출 헬퍼 함수 (여러 필드명 중 첫 번째 유효한 값 반환)
+function extractField(obj, ...fieldNames) {
+  for (const name of fieldNames) {
+    if (obj[name] !== undefined && obj[name] !== null && obj[name] !== '') {
+      return obj[name];
+    }
+  }
+  return '';
+}
+
+// 배열을 문자열로 변환 (goals, content 등이 배열일 수 있음)
+function normalizeToString(value) {
+  if (Array.isArray(value)) {
+    return value.join('\n');
+  }
+  if (typeof value === 'object' && value !== null) {
+    // Record<string, string> 형태의 goals 객체 처리
+    return Object.entries(value)
+      .map(([key, val]) => `[${key}] ${val}`)
+      .join('\n');
+  }
+  return String(value || '');
+}
+
 // JSON 데이터 파싱
 function parseJsonData() {
   const jsonText = elements.jsonData.value.trim();
@@ -587,6 +645,10 @@ function parseJsonData() {
         elements.studentNumber.value = parsed.studentNumber;
       }
     }
+    // 객체에 data 속성이 있는 경우 (iepon API 응답)
+    else if (parsed && Array.isArray(parsed.data)) {
+      plans = parsed.data;
+    }
     // 단일 객체인 경우 배열로 감싸기
     else if (parsed && typeof parsed === 'object') {
       plans = [parsed];
@@ -599,33 +661,185 @@ function parseJsonData() {
       throw new Error('입력할 데이터가 없습니다');
     }
 
-    // 필드명 정규화 (다양한 필드명 지원)
+    // 데이터 구조에서 모드 자동 감지
+    const detectedMode = detectModeFromData(plans);
+    if (detectedMode) {
+      // 선택된 탭과 데이터 타입 불일치 검증
+      if (state.mode !== detectedMode) {
+        const currentTabLabel = state.mode === 'plan' ? '월별계획' : '월별평가';
+        const detectedLabel = detectedMode === 'plan' ? '월별계획' : '월별평가';
+        
+        // 경고 메시지 표시
+        const errorMsg = `⚠️ 데이터 타입 불일치\n\n현재 선택된 탭: ${currentTabLabel}\n붙여넣은 데이터: ${detectedLabel}\n\n올바른 탭을 선택해주세요!`;
+        alert(errorMsg);
+        showToast('데이터 타입이 일치하지 않습니다', 'error');
+        
+        // 올바른 탭으로 자동 전환 제안
+        if (confirm(`${detectedLabel} 탭으로 자동 전환할까요?`)) {
+          // 탭 전환
+          state.mode = detectedMode;
+          state.detectedDataType = detectedMode;
+          updateDataTypeUI();
+          
+          // UI 탭도 전환
+          document.querySelectorAll('.mode-tab').forEach(tab => {
+            if (tab.dataset.mode === detectedMode) {
+              tab.classList.add('active');
+            } else {
+              tab.classList.remove('active');
+            }
+          });
+          
+          showToast(`${detectedLabel} 탭으로 전환되었습니다`, 'success');
+        } else {
+          // 사용자가 거부하면 처리 중단
+          return;
+        }
+      } else {
+        // 탭과 데이터가 일치하면 정상 처리
+        state.detectedDataType = detectedMode;
+        updateDataTypeUI();
+        
+        const modeLabel = detectedMode === 'plan' ? '월별계획' : '월별평가';
+        showToast(`${modeLabel} 데이터 감지됨`, 'info');
+      }
+    }
+
+    // 필드명 정규화 (다양한 필드명 지원 - iepon 사이트 호환성)
     if (state.mode === 'plan') {
       // 월별계획 모드
-      state.monthlyPlans = plans.map(plan => ({
-        month: plan.month || plan.mmnt || plan.월,
-        goal: plan.goal || plan.educationGoals || plan.교육목표 || '',
-        content: plan.content || plan.educationContent || plan.교육내용 || '',
-        method: plan.method || plan.educationMethod || plan.교육방법 || '',
-        evaluation: plan.evaluation || plan.evaluationPlan || plan.평가계획 || ''
-      }));
+      state.monthlyPlans = plans.map(plan => {
+        // months 배열 정규화 (문자열 배열로 통일)
+        let months = plan.months;
+        if (months && Array.isArray(months)) {
+          months = months.map(m => String(m));
+        }
+        
+        // 교육목표 추출 (goals 객체, goal 문자열, 배열 등 다양한 형태 지원)
+        let goal = extractField(plan, 
+          'goal', 'goals', 'educationGoals', 'education_goal',
+          '교육목표', 'educational_goals', 'monthlyGoal'
+        );
+        goal = normalizeToString(goal);
+        
+        // 교육내용 추출
+        let content = extractField(plan,
+          'content', 'contents', 'educationContent', 'education_content',
+          '교육내용', 'activities', 'educational_content'
+        );
+        content = normalizeToString(content);
+        
+        // 교육방법 추출
+        let method = extractField(plan,
+          'method', 'methods', 'educationMethod', 'education_method',
+          '교육방법', 'teaching_methods', 'teachingMethod'
+        );
+        method = normalizeToString(method);
+        
+        // 평가계획 추출
+        let evaluation = extractField(plan,
+          'evaluation', 'evaluationPlan', 'evaluation_plan', 'assessment',
+          '평가계획', '평가', 'evaluations', 'assessmentPlan'
+        );
+        evaluation = normalizeToString(evaluation);
+        
+        return {
+          month: plan.month || plan.mmnt || plan.월 || '',
+          months: months, // 다중 월 배열 지원
+          goal,
+          content,
+          method,
+          evaluation
+        };
+      });
     } else {
       // 월별평가 모드
-      state.monthlyPlans = plans.map(plan => ({
-        month: plan.month || plan.mmnt || plan.월,
-        eval_text: plan.eval_text || plan.evaluation || plan.평가 || plan.평가내용 || ''
-      }));
+      state.monthlyPlans = plans.map(plan => {
+        // months 배열 정규화
+        let months = plan.months;
+        if (months && Array.isArray(months)) {
+          months = months.map(m => String(m));
+        }
+        
+        // 평가 텍스트 추출 (refinedText 우선 사용 - iepon AI 보정 결과)
+        let evalText = extractField(plan,
+          'refinedText', 'refined_text',  // AI 보정된 텍스트 우선
+          'eval_text', 'evalText',
+          'rawText', 'raw_text',          // 원본 텍스트
+          'evaluation', 'finalContent', 'teacherContent',
+          '평가', '평가내용', '월별평가'
+        );
+        evalText = normalizeToString(evalText);
+        
+        return {
+          month: plan.month || plan.mmnt || plan.월 || '',
+          months: months, // 다중 월 배열 지원
+          eval_text: evalText
+        };
+      });
     }
 
     renderDataPreview();
 
-    showNotification(`${plans.length}개의 데이터를 파싱했습니다`, 'success');
+    // 그룹화된 월 데이터 개수 표시
+    const groupedCount = state.monthlyPlans.filter(p => p.months && p.months.length > 1).length;
+    const individualCount = state.monthlyPlans.length - groupedCount;
+    
+    let message = `${plans.length}개의 데이터를 파싱했습니다`;
+    if (groupedCount > 0) {
+      message += ` (개별: ${individualCount}, 그룹: ${groupedCount})`;
+    }
+    
+    showNotification(message, 'success');
     addLog(`JSON 파싱 성공: ${plans.length}개 항목`, 'success');
   } catch (error) {
     showNotification('JSON 파싱 실패', 'error');
     addLog(`JSON 파싱 실패: ${error.message}`, 'error');
     console.error('[나이스 자동입력] JSON 파싱 오류:', error);
   }
+}
+
+// 학년도 순서로 월 정렬 (3월~2월)
+function getSchoolYearOrder(month) {
+  const m = parseInt(String(month).replace(/[^0-9]/g, ''));
+  return m >= 3 ? m : m + 12;
+}
+
+// 월 배열을 학년도 순서로 정렬
+function sortMonthsBySchoolYear(months) {
+  return [...months].sort((a, b) => getSchoolYearOrder(a) - getSchoolYearOrder(b));
+}
+
+// 월 표시 문자열 생성
+function formatMonthDisplay(plan) {
+  let monthDisplay = '';
+  let isGrouped = false;
+  
+  if (plan.months && Array.isArray(plan.months) && plan.months.length > 0) {
+    isGrouped = plan.months.length > 1;
+    // 학년도 순서로 정렬
+    const sorted = sortMonthsBySchoolYear(plan.months);
+    const nums = sorted.map(m => parseInt(String(m).replace(/[^0-9]/g, '')));
+    
+    // 연속된 월인지 확인 (학년도 순서 고려)
+    const orders = nums.map(getSchoolYearOrder);
+    const isConsecutive = orders.every((order, i) => i === 0 || order === orders[i - 1] + 1);
+    
+    if (isConsecutive && nums.length > 1) {
+      // 연속: "3~5" 형식
+      monthDisplay = `${nums[0]}~${nums[nums.length - 1]}`;
+    } else if (nums.length > 3) {
+      // 너무 많은 월: "3, 4 외 2개"
+      monthDisplay = `${nums[0]}, ${nums[1]} 외 ${nums.length - 2}개`;
+    } else {
+      // 비연속: "3, 5, 7" 형식
+      monthDisplay = nums.join(', ');
+    }
+  } else if (plan.month) {
+    monthDisplay = String(plan.month).replace(/[^0-9]/g, '');
+  }
+  
+  return { monthDisplay, isGrouped };
 }
 
 // 데이터 미리보기 렌더링
@@ -648,12 +862,18 @@ function renderDataPreview() {
 
   if (state.mode === 'plan') {
     // 월별계획 모드 미리보기
-    elements.dataPreview.innerHTML = state.monthlyPlans.map((plan, index) => `
-      <div class="preview-item">
+    elements.dataPreview.innerHTML = state.monthlyPlans.map((plan, index) => {
+      const { monthDisplay, isGrouped } = formatMonthDisplay(plan);
+      const groupedClass = isGrouped ? 'preview-grouped' : '';
+      const groupBadge = isGrouped ? '<span class="group-badge">그룹</span>' : '';
+      
+      return `
+      <div class="preview-item ${groupedClass}">
         <button class="preview-remove" data-index="${index}">×</button>
         <div class="preview-month">
-          ${plan.month}
+          ${monthDisplay}
           <small>월</small>
+          ${groupBadge}
         </div>
         <div class="preview-content">
           ${plan.goal ? `<div class="preview-field"><strong>목표:</strong> ${truncate(plan.goal, 35)}</div>` : ''}
@@ -662,21 +882,29 @@ function renderDataPreview() {
           ${plan.evaluation ? `<div class="preview-field"><strong>평가:</strong> ${truncate(plan.evaluation, 35)}</div>` : ''}
         </div>
       </div>
-    `).join('');
+      `;
+    }).join('');
   } else {
     // 월별평가 모드 미리보기
-    elements.dataPreview.innerHTML = state.monthlyPlans.map((plan, index) => `
-      <div class="preview-item preview-eval">
+    elements.dataPreview.innerHTML = state.monthlyPlans.map((plan, index) => {
+      const { monthDisplay, isGrouped } = formatMonthDisplay(plan);
+      const groupedClass = isGrouped ? 'preview-grouped' : '';
+      const groupBadge = isGrouped ? '<span class="group-badge">그룹</span>' : '';
+      
+      return `
+      <div class="preview-item preview-eval ${groupedClass}">
         <button class="preview-remove" data-index="${index}">×</button>
         <div class="preview-month">
-          ${plan.month}
+          ${monthDisplay}
           <small>월</small>
+          ${groupBadge}
         </div>
         <div class="preview-content">
           <div class="preview-field"><strong>평가:</strong> ${truncate(plan.eval_text, 60)}</div>
         </div>
       </div>
-    `).join('');
+      `;
+    }).join('');
   }
 
   // 삭제 버튼 이벤트 리스너
@@ -687,7 +915,13 @@ function renderDataPreview() {
     });
   });
 
+  // 개수 표시 (그룹 개수 포함)
+  const groupedCount = state.monthlyPlans.filter(p => p.months && p.months.length > 1).length;
+  if (groupedCount > 0) {
+    elements.dataCount.textContent = `${state.monthlyPlans.length}개 (그룹: ${groupedCount})`;
+  } else {
   elements.dataCount.textContent = `${state.monthlyPlans.length}개`;
+  }
   elements.dataCount.classList.add('active');
   elements.startAutoFill.disabled = false;
 }
@@ -703,6 +937,8 @@ function removeDataItem(index) {
 function clearAllData() {
   if (confirm('모든 데이터를 삭제하시겠습니까?')) {
     state.monthlyPlans = [];
+    state.detectedDataType = null;
+    updateDataTypeUI();
     renderDataPreview();
     addLog('전체 데이터 삭제', 'info');
   }
@@ -733,7 +969,7 @@ async function startAutoFill() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     console.log('[나이스 자동입력] 현재 탭:', tab.url);
     
-    if (!tab.url.includes('dge.neis.go.kr')) {
+    if (!tab.url.includes('neis.go.kr')) {
       throw new Error('나이스 페이지에서 실행해주세요');
     }
 
@@ -908,13 +1144,13 @@ function updateProgress(current, total) {
   elements.progressText.textContent = `${current} / ${total} 완료`;
 }
 
-// 나이스 페이지 확인
+// 나이스 페이지 연결 상태 확인 (페이지 유형 감지 제거됨)
 async function checkNicePage() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     
-    if (tab.url.includes('dge.neis.go.kr')) {
-      updateConnectionStatus('connected', '나이스 페이지 감지됨');
+    if (tab.url.includes('neis.go.kr')) {
+      updateConnectionStatus('connected', '나이스 페이지 연결됨');
       addLog('나이스 페이지에서 실행 중', 'success');
     } else {
       updateConnectionStatus('error', '나이스 페이지가 아닙니다');
